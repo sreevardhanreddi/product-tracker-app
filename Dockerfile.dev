@@ -2,6 +2,8 @@
 # No 'playwright install' step needed — the browser is baked into this base image.
 FROM mcr.microsoft.com/playwright/python:v1.58.0-jammy
 
+ENV TZ=Asia/Kolkata
+
 WORKDIR /app
 
 # Install Python dependencies first (layer cache — only re-runs when requirements change)

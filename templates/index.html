@@ -130,15 +130,33 @@
       margin-bottom: .2rem;
     }
 
+    .product-card .card-top {
+      display: flex;
+      align-items: flex-start;
+      gap: .3rem;
+      margin-bottom: .25rem;
+    }
+
     .product-card h3 {
+      flex: 1;
       font-size: .82rem;
       font-weight: 600;
       color: #f1f5f9;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      margin-bottom: .25rem;
+      margin: 0;
     }
+
+    .product-card .open-link {
+      flex-shrink: 0;
+      color: #475569;
+      text-decoration: none;
+      font-size: .8rem;
+      line-height: 1.4;
+      transition: color .15s;
+    }
+    .product-card .open-link:hover { color: #94a3b8; }
 
     .product-card .price {
       font-size: .9rem;
@@ -183,14 +201,37 @@
       display: none;
     }
 
-    #chart-section h2 {
+    #chart-title-row {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      margin-bottom: .25rem;
+    }
+
+    #chart-title-row h2 {
+      flex: 1;
       font-size: 1rem;
       font-weight: 700;
-      margin-bottom: .25rem;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+
+    #open-product-link {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: .25rem;
+      font-size: .75rem;
+      font-weight: 600;
+      color: #64748b;
+      text-decoration: none;
+      padding: .2rem .5rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 5px;
+      transition: color .15s, border-color .15s;
+    }
+    #open-product-link:hover { color: #3b82f6; border-color: #3b82f6; }
 
     #chart-meta {
       font-size: .75rem;
@@ -311,7 +352,13 @@
     </div>
 
     <div id="chart-section" class="card">
-      <h2 id="chart-title"></h2>
+      <div id="chart-title-row">
+        <h2 id="chart-title"></h2>
+        <a id="open-product-link" href="#" target="_blank" rel="noopener noreferrer" title="Open product page">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Open
+        </a>
+      </div>
       <div id="chart-meta"></div>
       <canvas id="priceChart" height="100"></canvas>
       <div id="chart-actions">
@@ -402,13 +449,14 @@
         const card = document.createElement("div");
         card.className = "product-card" + (selectedProduct?.id === p.id ? " active" : "");
         card.innerHTML = `
-      <div class="platform-badge">${p.platform}</div>
-      <h3 title="${p.name}">${p.name}</h3>
-      <div class="price">${formatPrice(p.currency, p.current_price)}</div>
-      ${p.target_price != null
-            ? `<div class="target">Target: ${formatPrice(p.currency, p.target_price)}</div>`
-            : ""}
-    `;
+          <div class="platform-badge">${p.platform}</div>
+          <div class="card-top">
+            <h3 title="${p.name}">${p.name}</h3>
+            <a class="open-link" href="${p.url}" target="_blank" rel="noopener noreferrer" title="Open product page">↗</a>
+          </div>
+          <div class="price">${formatPrice(p.currency, p.current_price)}</div>
+          ${p.target_price != null ? `<div class="target">Target: ${formatPrice(p.currency, p.target_price)}</div>` : ""}
+        `;
         card.addEventListener("click", () => selectProduct(p));
         container.appendChild(card);
       });
@@ -420,6 +468,7 @@
       document.getElementById("placeholder").style.display = "none";
       document.getElementById("chart-section").style.display = "block";
       document.getElementById("chart-title").textContent = product.name;
+      document.getElementById("open-product-link").href = product.url;
       renderChartMeta(product);
       await loadChart(product.id);
       await loadProducts(); // re-render to update the active card highlight
@@ -441,7 +490,7 @@
       const points = data.data || [];
 
       const labels = points.map((p) =>
-        new Date(p.scraped_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+        new Date(p.scraped_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
       );
       const prices = points.map((p) => p.price);
 

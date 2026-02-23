@@ -21,5 +21,11 @@ class Product(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_checked_at: Optional[datetime] = Field(default=None)
 
-    price_history: List["PriceHistory"] = Relationship(back_populates="product")
-    alerts: List["Alert"] = Relationship(back_populates="product")
+    price_history: List["PriceHistory"] = Relationship(
+        back_populates="product",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )
+    alerts: List["Alert"] = Relationship(
+        back_populates="product",
+        sa_relationship_kwargs={"passive_deletes": True},
+    )

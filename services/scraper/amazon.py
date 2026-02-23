@@ -48,12 +48,10 @@ class AmazonScraper(BaseScraper):
                         "Amazon CAPTCHA encountered — cannot scrape this page"
                     )
 
-                title_el = page.wait_for_selector(
-                    "#productTitle", timeout=self.timeout_ms
+                title_el = page.query_selector("#productTitle")
+                name = (
+                    title_el.inner_text().strip() if title_el else page.title().strip()
                 )
-                if not title_el:
-                    raise ScraperError("Product title not found on Amazon page")
-                name = title_el.inner_text().strip()
 
                 # Price: prefer the full offscreen-formatted value
                 price_raw: str | None = None

@@ -58,7 +58,7 @@ class ShopifyScraper(BaseScraper):
         in_stock = bool(variant.get("available", True))
         image_url = data["images"][0]["src"] if data.get("images") else None
         # Shopify JSON doesn't always expose currency; fall back to USD
-        currency = "USD"
+        currency = variant.get("price_currency") or "USD"
 
         return ScrapedProduct(
             name=data["title"],
@@ -83,7 +83,7 @@ class ShopifyScraper(BaseScraper):
                         name = el.inner_text().strip()
                         break
                 if not name:
-                    raise ScraperError("Product title not found on Shopify page")
+                    name = page.title().strip()
 
                 price_raw: str | None = None
                 for sel in _PRICE_SELECTORS:

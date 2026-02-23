@@ -36,9 +36,9 @@ class FlipkartScraper(BaseScraper):
                 title_el = page.query_selector(".B_NuCI") or page.query_selector(
                     "._35KyD6"
                 )
-                if not title_el:
-                    raise ScraperError("Product title not found on Flipkart page")
-                name = title_el.inner_text().strip()
+                name = (
+                    title_el.inner_text().strip() if title_el else page.title().strip()
+                )
 
                 # Price — specific selector preferred over the more general one
                 price_el = page.query_selector(
