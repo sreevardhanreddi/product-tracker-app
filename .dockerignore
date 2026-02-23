@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.git/
+.gitignore
+.env
+*.log
+*.md
+celerybeat-schedule
+celerybeat.pid
+.idea/
+.vscode/
