@@ -40,10 +40,14 @@ class FlipkartScraper(BaseScraper):
                     title_el.inner_text().strip() if title_el else page.title().strip()
                 )
 
-                # Price — specific selector preferred over the more general one
-                price_el = page.query_selector(
-                    "._30jeq3._16Jk6d"
-                ) or page.query_selector("._30jeq3")
+                # Price — new React Native Web UI first, then legacy selectors
+                price_el = (
+                    page.query_selector(
+                        ".v1zwn21j:has-text('₹')"
+                    )  # new Flipkart UI (selling price)
+                    or page.query_selector("._30jeq3._16Jk6d")  # old UI (specific)
+                    or page.query_selector("._30jeq3")  # old UI (general)
+                )
                 if not price_el:
                     raise ScraperError("Price not found on Flipkart page")
                 price_raw = price_el.inner_text().strip()

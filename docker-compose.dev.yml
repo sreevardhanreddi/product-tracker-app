@@ -45,8 +45,11 @@ services:
       - "8003:8000"
     env_file:
       - .env
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
     volumes:
       - .:/app   # live reload via --reload
+      - /tmp/.X11-unix:/tmp/.X11-unix
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -60,8 +63,11 @@ services:
       dockerfile: Dockerfile.dev
     env_file:
       - .env
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
     volumes:
       - .:/app
+      - /tmp/.X11-unix:/tmp/.X11-unix
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -75,8 +81,11 @@ services:
       dockerfile: Dockerfile.dev
     env_file:
       - .env
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
     volumes:
       - .:/app
+      - /tmp/.X11-unix:/tmp/.X11-unix
     depends_on:
       migrate:
         condition: service_completed_successfully
