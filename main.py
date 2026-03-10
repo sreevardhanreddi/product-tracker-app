@@ -15,7 +15,7 @@ logging.basicConfig(
 if settings.SENTRY_DSN:
     sentry_sdk.init(dsn=settings.SENTRY_DSN, environment=settings.APP_ENV)
 
-from models import Alert, PriceHistory, Product  # noqa: F401, E402
+from models import Alert, PriceHistory, Product, ProductLink  # noqa: F401, E402
 from routes.alerts import router as alerts_router
 from routes.frontend import router as frontend_router
 from routes.price_history import router as price_history_router

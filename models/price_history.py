@@ -9,6 +9,9 @@ class PriceHistory(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     product_id: int = Field(foreign_key="products.id", index=True)
+    product_link_id: Optional[int] = Field(
+        default=None, foreign_key="product_links.id", index=True
+    )
     price: float
     currency: str = Field(default="INR", max_length=10)
     in_stock: bool = Field(default=True)

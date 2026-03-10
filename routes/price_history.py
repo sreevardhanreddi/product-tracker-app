@@ -16,6 +16,7 @@ def get_price_history(
     product_id: int,
     limit: int = Query(default=200, le=1000),
     offset: int = 0,
+    product_link_id: Optional[int] = None,
     from_date: Optional[datetime] = None,
     to_date: Optional[datetime] = None,
     session: Session = Depends(get_session),
@@ -25,6 +26,8 @@ def get_price_history(
         raise HTTPException(status_code=404, detail="Product not found")
 
     query = select(PriceHistory).where(PriceHistory.product_id == product_id)
+    if product_link_id is not None:
+        query = query.where(PriceHistory.product_link_id == product_link_id)
     if from_date:
         query = query.where(PriceHistory.scraped_at >= from_date)
     if to_date:

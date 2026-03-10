@@ -1,20 +1,18 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 from sqlmodel import Field, Relationship, SQLModel
 
 from .source_label import format_source_label
 
 
-class Product(SQLModel, table=True):
-    __tablename__ = "products"
+class ProductLink(SQLModel, table=True):
+    __tablename__ = "product_links"
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(max_length=500)
-    # Deprecated single-link fields kept for backward compatibility.
+    product_id: int = Field(foreign_key="products.id", index=True)
     url: str = Field(max_length=2000, unique=True)
     platform: str = Field(max_length=50)  # "amazon" | "flipkart" | "shopify" | "myntra"
-    target_price: Optional[float] = Field(default=None)
     current_price: Optional[float] = Field(default=None)
     currency: str = Field(default="INR", max_length=10)
     image_url: Optional[str] = Field(default=None, max_length=2000)
@@ -24,18 +22,7 @@ class Product(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_checked_at: Optional[datetime] = Field(default=None)
 
-    price_history: List["PriceHistory"] = Relationship(
-        back_populates="product",
-        sa_relationship_kwargs={"passive_deletes": True},
-    )
-    links: List["ProductLink"] = Relationship(
-        back_populates="product",
-        sa_relationship_kwargs={"passive_deletes": True},
-    )
-    alerts: List["Alert"] = Relationship(
-        back_populates="product",
-        sa_relationship_kwargs={"passive_deletes": True},
-    )
+    product: Optional["Product"] = Relationship(back_populates="links")
 
     @property
     def source_label(self) -> str:

@@ -8,6 +8,7 @@ class Platform(str, Enum):
     AMAZON = "amazon"
     FLIPKART = "flipkart"
     SHOPIFY = "shopify"
+    MYNTRA = "myntra"
 
 
 def detect_platform(url: str) -> Platform:
@@ -28,6 +29,8 @@ def detect_platform(url: str) -> Platform:
         return Platform.AMAZON
     if "flipkart." in host:
         return Platform.FLIPKART
+    if "myntra." in host:
+        return Platform.MYNTRA
 
     # Shopify probe via the public JSON API endpoint
     handle = parsed.path.rstrip("/").split("/")[-1]
@@ -41,7 +44,7 @@ def detect_platform(url: str) -> Platform:
 
     raise ValueError(
         f"Could not detect platform for URL: {url}. "
-        "Supported platforms: Amazon, Flipkart, Shopify."
+        "Supported platforms: Amazon, Flipkart, Shopify, Myntra."
     )
 
 
@@ -54,6 +57,7 @@ def get_scraper(url: str):
 
     from .amazon import AmazonScraper
     from .flipkart import FlipkartScraper
+    from .myntra import MyntraScraper
     from .shopify import ShopifyScraper
 
     platform = detect_platform(url)
@@ -66,5 +70,7 @@ def get_scraper(url: str):
         return AmazonScraper(**kwargs), platform.value
     elif platform == Platform.FLIPKART:
         return FlipkartScraper(**kwargs), platform.value
+    elif platform == Platform.MYNTRA:
+        return MyntraScraper(**kwargs), platform.value
     else:
         return ShopifyScraper(**kwargs), platform.value

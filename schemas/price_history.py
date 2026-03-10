@@ -7,6 +7,7 @@ from pydantic import BaseModel
 class PriceHistoryRead(BaseModel):
     id: int
     product_id: int
+    product_link_id: Optional[int]
     price: float
     currency: str
     in_stock: bool

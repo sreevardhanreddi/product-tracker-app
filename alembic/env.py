@@ -7,7 +7,7 @@ from alembic import context
 from config import settings
 
 # Import all models so their metadata is registered with SQLModel.metadata
-from models import Alert, PriceHistory, Product  # noqa: F401
+from models import Alert, PriceHistory, Product, ProductLink  # noqa: F401
 
 config = context.config
 

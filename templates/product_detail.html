@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Product Detail</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["ui-sans-serif", "system-ui", "sans-serif"],
+          },
+        },
+      },
+    };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+
+<body class="min-h-screen bg-stone-950 text-stone-100 antialiased">
+  <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <a href="/" class="inline-flex w-fit items-center gap-2 rounded-full border border-stone-700 bg-stone-900 px-4 py-2 text-sm font-semibold text-stone-300 transition hover:border-stone-600 hover:text-stone-100">
+      <span aria-hidden="true">←</span>
+      Back to products
+    </a>
+
+    <div id="loading-state" class="rounded-3xl border border-stone-800 bg-stone-900 px-6 py-16 text-center text-sm text-stone-400 shadow-lg shadow-black/20">
+      Loading product details…
+    </div>
+
+    <div id="not-found-state" class="hidden rounded-3xl border border-rose-500/20 bg-rose-500/10 px-6 py-16 text-center shadow-lg shadow-black/20">
+      <p class="text-lg font-semibold text-rose-200">Product not found.</p>
+      <p class="mt-2 text-sm text-rose-100/70">The tracked product may have been removed.</p>
+    </div>
+
+    <div id="detail-shell" class="hidden min-w-0 space-y-6 overflow-x-hidden">
+      <section class="overflow-hidden rounded-[1.75rem] border border-stone-800 bg-stone-900 shadow-xl shadow-black/20">
+        <div class="grid min-w-0 gap-0 lg:grid-cols-[minmax(0,1fr)_240px]">
+          <div class="space-y-3 p-4 sm:p-5">
+            <div class="min-w-0">
+              <p class="text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">Product</p>
+              <h1 id="product-name" class="mt-2 text-lg font-semibold leading-tight text-stone-50 sm:text-xl"></h1>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2" id="product-source-badges"></div>
+
+            <div class="grid gap-2 sm:grid-cols-3">
+              <div class="rounded-xl border border-stone-800 bg-stone-950/80 p-3">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Current Price</p>
+                <p id="product-price" class="mt-2 text-lg font-semibold text-amber-300"></p>
+              </div>
+              <div class="rounded-xl border border-stone-800 bg-stone-950/80 p-3">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Target</p>
+                <p id="product-target" class="mt-2 text-sm leading-5 text-stone-300"></p>
+              </div>
+              <div class="rounded-xl border border-stone-800 bg-stone-950/80 p-3">
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">Last Check</p>
+                <p id="product-checked" class="mt-2 text-sm leading-5 text-stone-300"></p>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <button id="check-now-btn" class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-stone-700" onclick="manualCheck(event)">Check Now</button>
+              <a id="open-product-link" class="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-300 transition hover:border-sky-400 hover:bg-sky-500/15 hover:text-sky-200" href="#" target="_blank" rel="noopener noreferrer">
+                Open Product
+              </a>
+              <button id="remove-product-btn" class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:bg-stone-700" onclick="deleteProduct(event)">
+                <span aria-hidden="true">✕</span>
+                Remove
+              </button>
+            </div>
+          </div>
+
+          <div id="product-image-shell" class="aspect-[16/10] max-h-[180px] border-t border-stone-800 bg-stone-950 lg:aspect-auto lg:max-h-none lg:border-l lg:border-t-0"></div>
+        </div>
+      </section>
+
+      <section class="rounded-3xl border border-stone-800 bg-stone-900 p-4 shadow-lg shadow-black/20 lg:p-5">
+        <div class="mb-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">Links</p>
+          <h2 class="mt-2 text-base font-semibold text-stone-50">Tracked sources</h2>
+        </div>
+        <div id="product-links" class="overflow-hidden rounded-2xl border border-stone-800 bg-stone-950"></div>
+      </section>
+
+      <section class="min-w-0">
+        <div class="min-w-0 overflow-hidden rounded-3xl border border-stone-800 bg-stone-900 p-5 shadow-lg shadow-black/20 sm:p-6">
+          <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">History</p>
+              <h2 class="mt-2 text-xl font-semibold text-stone-50">Price chart</h2>
+            </div>
+            <div id="chart-meta" class="max-w-md text-right text-xs leading-5 text-stone-400"></div>
+          </div>
+          <div class="min-w-0 overflow-hidden rounded-2xl border border-stone-800 bg-stone-950/60 p-3">
+            <div class="relative h-72 w-full min-w-0 sm:h-[30rem]">
+              <canvas id="priceChart" class="block h-full w-full max-w-full"></canvas>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const productId = Number({{ product_id | tojson }});
+    let selectedProduct = null;
+    let chart = null;
+    const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      await loadProduct();
+    });
+
+    function formatPrice(currency, price) {
+      if (price == null) return "—";
+      const value = Number(price);
+      if (!Number.isFinite(value)) return "—";
+      try {
+        return new Intl.NumberFormat(
+          currency === "INR" ? "en-IN" : undefined,
+          {
+            style: "currency",
+            currency: currency || "USD",
+            maximumFractionDigits: 2,
+          }
+        ).format(value);
+      } catch {
+        return `${currency || ""} ${value.toFixed(2)}`.trim();
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[char]));
+    }
+
+    function parseApiDate(iso) {
+      if (!iso) return null;
+      const normalized = /[zZ]|[+\-]\d{2}:\d{2}$/.test(iso) ? iso : `${iso}Z`;
+      return new Date(normalized);
+    }
+
+    function formatBrowserDate(iso) {
+      const d = parseApiDate(iso);
+      if (!d) return "";
+      return d.toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function timeAgo(iso) {
+      if (!iso) return "never";
+      const d = parseApiDate(iso);
+      if (!d || Number.isNaN(d.getTime())) return "unknown";
+      const diff = Date.now() - d.getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      return `${Math.floor(hrs / 24)}d ago`;
+    }
+
+    function renderProductImage(product) {
+      const shell = document.getElementById("product-image-shell");
+      if (product.image_url) {
+        shell.innerHTML = `
+          <img
+            src="${escapeHtml(product.image_url)}"
+            alt="${escapeHtml(product.name)}"
+            class="h-full w-full object-cover"
+          />
+        `;
+        return;
+      }
+
+      shell.innerHTML = `
+        <div class="flex h-full w-full items-end bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),_transparent_28%),linear-gradient(135deg,#292524,#0c0a09)] p-6">
+          <span class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">No image yet</span>
+        </div>
+      `;
+    }
+
+    function renderSiteBadges(product) {
+      const labels = [...new Set(
+        ((product.links && product.links.length
+          ? product.links.map((link) => link.source_label || link.platform)
+          : [product.source_label || product.platform])
+          .filter(Boolean))
+      )];
+      return labels.map((label) => `
+        <span class="inline-flex items-center rounded-full border border-stone-700 bg-stone-800 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-300">
+          ${escapeHtml(label)}
+        </span>
+      `).join("");
+    }
+
+    async function loadProduct() {
+      const res = await fetch(`/api/products/${productId}`);
+      document.getElementById("loading-state").classList.add("hidden");
+
+      if (res.status === 404) {
+        document.getElementById("not-found-state").classList.remove("hidden");
+        return;
+      }
+
+      selectedProduct = await res.json();
+      document.getElementById("detail-shell").classList.remove("hidden");
+
+      renderProduct(selectedProduct);
+      renderProductLinks(selectedProduct);
+      await loadChart(selectedProduct.id);
+    }
+
+    function renderProduct(product) {
+      document.title = `${product.name} · Product Detail`;
+      document.getElementById("product-name").textContent = product.name;
+      document.getElementById("product-price").textContent = formatPrice(product.currency, product.current_price);
+      document.getElementById("product-target").textContent = product.target_price != null
+        ? `Target: ${formatPrice(product.currency, product.target_price)}`
+        : "No target price configured";
+      document.getElementById("product-checked").textContent = product.last_checked_at
+        ? `Last checked ${timeAgo(product.last_checked_at)}`
+        : "Awaiting first scrape";
+      document.getElementById("open-product-link").href = product.url;
+      document.getElementById("product-source-badges").innerHTML = renderSiteBadges(product);
+      renderProductImage(product);
+      renderChartMeta(product);
+    }
+
+    function renderChartMeta(product) {
+      const parts = [];
+      if (product.last_checked_at) parts.push(`Last checked ${timeAgo(product.last_checked_at)}`);
+      if (product.target_price != null) parts.push(`Alert below ${formatPrice(product.currency, product.target_price)}`);
+      parts.push(`Timezone ${browserTimeZone}`);
+      document.getElementById("chart-meta").textContent = parts.join(" · ");
+    }
+
+    function renderProductLinks(product) {
+      const links = product.links || [];
+      const rows = links.map((link) => `
+        <div class="flex flex-col items-start gap-2 border-b border-stone-800 px-3 py-3 text-xs sm:flex-row sm:items-center last:border-b-0">
+          <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500 sm:min-w-14">${escapeHtml(link.source_label || link.platform)}</span>
+          <a class="min-w-0 flex-1 break-all text-sky-300 transition hover:text-sky-200 sm:truncate sm:break-normal" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(link.url)}">${escapeHtml(link.url)}</a>
+          ${link.current_price != null
+            ? `<span class="whitespace-nowrap font-semibold text-stone-100">${formatPrice(link.currency, link.current_price)}</span>`
+            : `<span class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending</span>`}
+          <button class="shrink-0 self-end text-base leading-none text-rose-400 transition hover:text-rose-300 sm:self-auto" title="Remove link" onclick="removeLink(event, ${product.id}, ${link.id})">✕</button>
+        </div>
+      `).join("");
+
+      document.getElementById("product-links").innerHTML = rows + `
+        <div class="flex flex-col gap-2 bg-stone-900 px-3 py-3 sm:flex-row">
+          <input class="flex-1 rounded-xl border border-stone-700 bg-stone-950 px-3 py-2 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500" type="url" id="new-link-input" placeholder="Add link (Amazon / Flipkart / Myntra…)" />
+          <button class="shrink-0 rounded-xl bg-sky-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-stone-600" id="new-link-btn" onclick="addLink(event, ${product.id})">+ Add</button>
+        </div>
+      `;
+    }
+
+    async function addLink(event, currentProductId) {
+      const input = document.getElementById("new-link-input");
+      const btn = document.getElementById("new-link-btn");
+      const url = input.value.trim();
+      if (!url) return;
+
+      btn.textContent = "Adding…";
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/products/${currentProductId}/links`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Error: " + (err.detail || JSON.stringify(err)));
+          return;
+        }
+        selectedProduct = await res.json();
+        renderProduct(selectedProduct);
+        renderProductLinks(selectedProduct);
+        await loadChart(selectedProduct.id);
+      } finally {
+        btn.textContent = "+ Add";
+        btn.disabled = false;
+      }
+    }
+
+    async function removeLink(event, currentProductId, linkId) {
+      event.stopPropagation();
+      if (!confirm("Remove this tracking link?")) return;
+      const btn = event.currentTarget;
+      btn.disabled = true;
+      try {
+        await fetch(`/api/products/${currentProductId}/links/${linkId}`, { method: "DELETE" });
+        const res = await fetch(`/api/products/${currentProductId}`);
+        if (res.status === 404) {
+          window.location.href = "/";
+          return;
+        }
+        selectedProduct = await res.json();
+        renderProduct(selectedProduct);
+        renderProductLinks(selectedProduct);
+        await loadChart(selectedProduct.id);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function loadChart(currentProductId) {
+      const res = await fetch(`/api/products/${currentProductId}/prices?limit=300`);
+      const data = await res.json();
+      const points = data.data || [];
+      const links = selectedProduct?.links || [];
+      const hasMultipleLinks = links.length > 1;
+      const curr = data.currency || selectedProduct?.currency || "";
+
+      const colorPalette = [
+        { border: "#57534e", bg: "rgba(87,83,78,.10)" },
+        { border: "#a16207", bg: "rgba(161,98,7,.10)" },
+        { border: "#92400e", bg: "rgba(146,64,14,.10)" },
+        { border: "#78716c", bg: "rgba(120,113,108,.10)" },
+        { border: "#44403c", bg: "rgba(68,64,60,.10)" },
+      ];
+
+      function toXY(pts) {
+        return pts
+          .map((point) => ({ x: parseApiDate(point.scraped_at).getTime(), y: point.price }))
+          .sort((a, b) => a.x - b.x);
+      }
+
+      let datasets = [];
+
+      if (hasMultipleLinks) {
+        datasets = links.map((link, idx) => {
+          const color = colorPalette[idx % colorPalette.length];
+          return {
+            label: link.source_label || link.platform,
+            data: toXY(points.filter((point) => point.product_link_id === link.id)),
+            borderColor: color.border,
+            backgroundColor: color.bg,
+            fill: false,
+            tension: 0.35,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+          };
+        });
+      } else {
+        const xy = toXY(points);
+        datasets = [{
+          label: `Price (${curr})`,
+          data: xy,
+          borderColor: "#57534e",
+          backgroundColor: "rgba(87,83,78,.08)",
+          fill: true,
+          tension: 0.35,
+          pointRadius: xy.length > 50 ? 2 : 4,
+          pointHoverRadius: 6,
+        }];
+      }
+
+      if (chart) chart.destroy();
+      chart = new Chart(document.getElementById("priceChart"), {
+        type: "line",
+        data: { datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          parsing: false,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            legend: {
+              display: hasMultipleLinks,
+              labels: { color: "#d6d3d1" },
+            },
+            tooltip: {
+              backgroundColor: "#1c1917",
+              borderColor: "#44403c",
+              borderWidth: 1,
+              titleColor: "#fafaf9",
+              bodyColor: "#e7e5e4",
+              callbacks: {
+                title: (items) => formatBrowserDate(new Date(items[0].parsed.x).toISOString()),
+                label: (ctx) => {
+                  const value = Number(ctx.parsed?.y);
+                  if (!Number.isFinite(value)) return `${ctx.dataset.label}: —`;
+                  return `${ctx.dataset.label}: ${curr} ${value.toFixed(2)}`;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              type: "linear",
+              ticks: {
+                maxTicksLimit: 8,
+                maxRotation: 0,
+                color: "#a8a29e",
+                callback: (value) => formatBrowserDate(new Date(value).toISOString()),
+              },
+              grid: { color: "rgba(68,64,60,.35)" },
+              border: { color: "rgba(68,64,60,.5)" },
+            },
+            y: {
+              beginAtZero: false,
+              ticks: {
+                color: "#a8a29e",
+                callback: (value) => `${curr} ${Number(value).toFixed(0)}`,
+              },
+              grid: { color: "rgba(68,64,60,.35)" },
+              border: { color: "rgba(68,64,60,.5)" },
+            },
+          },
+        },
+      });
+    }
+
+    async function manualCheck(event) {
+      if (!selectedProduct) return;
+      const btn = event.currentTarget;
+      btn.textContent = "Checking…";
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/products/${selectedProduct.id}/check`, { method: "POST" });
+        if (!res.ok) {
+          alert("Check failed — see server logs");
+          return;
+        }
+        selectedProduct = await res.json();
+        renderProduct(selectedProduct);
+        renderProductLinks(selectedProduct);
+        await loadChart(selectedProduct.id);
+      } finally {
+        btn.textContent = "Check Now";
+        btn.disabled = false;
+      }
+    }
+
+    async function deleteProduct(event) {
+      if (!selectedProduct) return;
+      if (!confirm(`Remove "${selectedProduct.name}" from tracking?`)) return;
+      const btn = event.currentTarget;
+      btn.disabled = true;
+      try {
+        await fetch(`/api/products/${selectedProduct.id}`, { method: "DELETE" });
+        window.location.href = "/";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+
+</html>

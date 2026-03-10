@@ -1,3 +1,6 @@
+import json
+import re
+
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper, ScrapedProduct, ScraperError
@@ -32,37 +35,66 @@ class FlipkartScraper(BaseScraper):
                     close_btn.click()
                     page.wait_for_timeout(500)
 
-                # Title — two possible selectors for different page layouts
-                title_el = page.query_selector(".B_NuCI") or page.query_selector(
-                    "._35KyD6"
-                )
-                name = (
-                    title_el.inner_text().strip() if title_el else page.title().strip()
-                )
+                # Prefer JSON-LD from page source when available.
+                jsonld = self._extract_jsonld_product(page)
+                name: str | None = None
+                price_raw: str | None = None
+                price: float | None = None
+                image_url: str | None = None
+                in_stock: bool | None = None
 
-                # Price — new React Native Web UI first, then legacy selectors
-                price_el = (
-                    page.query_selector(
-                        ".v1zwn21j:has-text('₹')"
-                    )  # new Flipkart UI (selling price)
-                    or page.query_selector("._30jeq3._16Jk6d")  # old UI (specific)
-                    or page.query_selector("._30jeq3")  # old UI (general)
-                )
-                if not price_el:
-                    raise ScraperError("Price not found on Flipkart page")
-                price_raw = price_el.inner_text().strip()
-                price = self._parse_price(price_raw)
+                if jsonld:
+                    if jsonld.get("name"):
+                        name = str(jsonld["name"]).strip()
+
+                    offers = (
+                        jsonld.get("offers", {}) if isinstance(jsonld, dict) else {}
+                    )
+                    offer_price = offers.get("price")
+                    if offer_price is not None:
+                        price_raw = str(offer_price)
+                        price = self._parse_price(price_raw)
+
+                    avail = str(offers.get("availability", "")).lower()
+                    if "outofstock" in avail:
+                        in_stock = False
+                    elif "instock" in avail:
+                        in_stock = True
+
+                    images = jsonld.get("image")
+                    if isinstance(images, list) and images:
+                        image_url = images[0]
+                    elif isinstance(images, str):
+                        image_url = images
+
+                if not name:
+                    raise ScraperError("Product title not found in Flipkart JSON-LD")
+
+                # Price fallback to DOM selectors
+                if price is None:
+                    price_el = (
+                        page.query_selector(
+                            ".v1zwn21j:has-text('₹')"
+                        )  # new Flipkart UI (selling price)
+                        or page.query_selector("._30jeq3._16Jk6d")  # old UI (specific)
+                        or page.query_selector("._30jeq3")  # old UI (general)
+                    )
+                    if not price_el:
+                        raise ScraperError("Price not found on Flipkart page")
+                    price_raw = price_el.inner_text().strip()
+                    price = self._parse_price(price_raw)
 
                 # Out-of-stock: Flipkart shows a "NOTIFY ME" button when unavailable
-                in_stock = page.query_selector("._2AkGiR") is None
+                if in_stock is None:
+                    in_stock = page.query_selector("._2AkGiR") is None
 
                 # Product image
-                image_url: str | None = None
-                img_el = page.query_selector("._396cs4 img") or page.query_selector(
-                    "._2r_T1I img"
-                )
-                if img_el:
-                    image_url = img_el.get_attribute("src")
+                if not image_url:
+                    img_el = page.query_selector("._396cs4 img") or page.query_selector(
+                        "._2r_T1I img"
+                    )
+                    if img_el:
+                        image_url = img_el.get_attribute("src")
 
                 return ScrapedProduct(
                     name=name,
@@ -74,3 +106,52 @@ class FlipkartScraper(BaseScraper):
                 )
             finally:
                 browser.close()
+
+    def _extract_jsonld_product(self, page) -> dict | None:
+        scripts = page.query_selector_all("script[type='application/ld+json']")
+        for script in scripts:
+            text = (script.inner_text() or "").strip()
+            if not text:
+                continue
+            try:
+                payload = json.loads(text)
+            except Exception:
+                # Some pages embed malformed JSON-LD; try to salvage Product object by regex.
+                payload = self._try_parse_partial_jsonld(text)
+
+            product = self._find_product_node(payload)
+            if product:
+                return product
+        return None
+
+    def _try_parse_partial_jsonld(self, text: str):
+        match = re.search(r"\{.*\"@type\"\s*:\s*\"Product\".*\}", text, re.DOTALL)
+        if not match:
+            return None
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            return None
+
+    def _find_product_node(self, payload):
+        if payload is None:
+            return None
+        if isinstance(payload, dict):
+            t = str(payload.get("@type", "")).lower()
+            if t == "product":
+                return payload
+            graph = payload.get("@graph")
+            if isinstance(graph, list):
+                for node in graph:
+                    if (
+                        isinstance(node, dict)
+                        and str(node.get("@type", "")).lower() == "product"
+                    ):
+                        return node
+            return None
+        if isinstance(payload, list):
+            for item in payload:
+                found = self._find_product_node(item)
+                if found:
+                    return found
+        return None

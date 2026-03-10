@@ -5,605 +5,227 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Product Price Tracker</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <style>
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      display: flex;
-      height: 100vh;
-      background: #f1f5f9;
-      color: #1e293b;
-    }
-
-    /* ── Sidebar ─────────────────────────────────────────────── */
-    #sidebar {
-      width: 300px;
-      min-width: 300px;
-      background: #0f172a;
-      color: #cbd5e1;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-    }
-
-    #sidebar-header {
-      padding: 1.25rem 1rem 0;
-    }
-
-    #sidebar-header h1 {
-      font-size: 1rem;
-      font-weight: 700;
-      color: #f8fafc;
-      margin-bottom: 1rem;
-      letter-spacing: .02em;
-    }
-
-    #add-form input {
-      width: 100%;
-      padding: .5rem .65rem;
-      margin-bottom: .4rem;
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 6px;
-      color: #e2e8f0;
-      font-size: .82rem;
-      outline: none;
-    }
-
-    #add-form input::placeholder {
-      color: #64748b;
-    }
-
-    #add-form input:focus {
-      border-color: #3b82f6;
-    }
-
-    #add-form button {
-      width: 100%;
-      padding: .5rem;
-      background: #3b82f6;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      font-size: .82rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background .15s;
-    }
-
-    #add-form button:hover {
-      background: #2563eb;
-    }
-
-    #add-form button:disabled {
-      background: #334155;
-      cursor: not-allowed;
-    }
-
-    #product-scroll {
-      flex: 1;
-      overflow-y: auto;
-      padding: .75rem 1rem 1rem;
-    }
-
-    #product-scroll h2 {
-      font-size: .7rem;
-      font-weight: 600;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: #475569;
-      margin-bottom: .6rem;
-    }
-
-    .product-card {
-      background: #1e293b;
-      border: 2px solid transparent;
-      border-radius: 8px;
-      padding: .65rem .75rem;
-      margin-bottom: .4rem;
-      cursor: pointer;
-      transition: border-color .15s;
-    }
-
-    .product-card:hover {
-      border-color: #334155;
-    }
-
-    .product-card.active {
-      border-color: #3b82f6;
-    }
-
-    .product-card .platform-badge {
-      font-size: .62rem;
-      font-weight: 700;
-      letter-spacing: .07em;
-      text-transform: uppercase;
-      color: #94a3b8;
-      margin-bottom: .2rem;
-    }
-
-    .product-card .card-top {
-      display: flex;
-      align-items: flex-start;
-      gap: .3rem;
-      margin-bottom: .25rem;
-    }
-
-    .product-card h3 {
-      flex: 1;
-      font-size: .82rem;
-      font-weight: 600;
-      color: #f1f5f9;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      margin: 0;
-    }
-
-    .product-card .open-link {
-      flex-shrink: 0;
-      color: #475569;
-      text-decoration: none;
-      font-size: .8rem;
-      line-height: 1.4;
-      transition: color .15s;
-    }
-    .product-card .open-link:hover { color: #94a3b8; }
-
-    .product-card .price {
-      font-size: .9rem;
-      font-weight: 700;
-      color: #34d399;
-    }
-
-    .product-card .target {
-      font-size: .7rem;
-      color: #64748b;
-      margin-top: .15rem;
-    }
-
-    /* ── Main content ────────────────────────────────────────── */
-    #content {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      overflow-y: auto;
-      padding: 1.5rem;
-      gap: 1rem;
-    }
-
-    .card {
-      background: #fff;
-      border-radius: 12px;
-      padding: 1.25rem 1.5rem;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, .07);
-    }
-
-    #placeholder {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #94a3b8;
-      font-size: .9rem;
-      text-align: center;
-    }
-
-    #chart-section {
-      display: none;
-    }
-
-    #chart-title-row {
-      display: flex;
-      align-items: center;
-      gap: .5rem;
-      margin-bottom: .25rem;
-    }
-
-    #chart-title-row h2 {
-      flex: 1;
-      font-size: 1rem;
-      font-weight: 700;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    #open-product-link {
-      flex-shrink: 0;
-      display: inline-flex;
-      align-items: center;
-      gap: .25rem;
-      font-size: .75rem;
-      font-weight: 600;
-      color: #64748b;
-      text-decoration: none;
-      padding: .2rem .5rem;
-      border: 1px solid #e2e8f0;
-      border-radius: 5px;
-      transition: color .15s, border-color .15s;
-    }
-    #open-product-link:hover { color: #3b82f6; border-color: #3b82f6; }
-
-    #chart-meta {
-      font-size: .75rem;
-      color: #94a3b8;
-      margin-bottom: 1rem;
-    }
-
-    #chart-actions {
-      display: flex;
-      gap: .6rem;
-      align-items: center;
-      margin-top: 1rem;
-      flex-wrap: wrap;
-    }
-
-    .btn {
-      padding: .4rem .85rem;
-      border: none;
-      border-radius: 6px;
-      font-size: .8rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity .15s;
-    }
-
-    .btn:hover {
-      opacity: .85;
-    }
-
-    .btn:disabled {
-      opacity: .5;
-      cursor: not-allowed;
-    }
-
-    .btn-primary {
-      background: #3b82f6;
-      color: #fff;
-    }
-
-    .btn-danger {
-      background: #ef4444;
-      color: #fff;
-    }
-
-    /* ── Alerts ─────────────────────────────────────────────── */
-    #alerts-section h3 {
-      font-size: .85rem;
-      font-weight: 700;
-      margin-bottom: .75rem;
-      color: #475569;
-    }
-
-    .alert-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: .5rem;
-      background: #fef3c7;
-      border-left: 3px solid #f59e0b;
-      border-radius: 6px;
-      padding: .6rem .75rem;
-      margin-bottom: .4rem;
-      font-size: .8rem;
-      line-height: 1.4;
-    }
-
-    .alert-item .alert-channel {
-      font-size: .68rem;
-      color: #78716c;
-      font-style: italic;
-    }
-
-    .alert-item button {
-      background: none;
-      border: none;
-      cursor: pointer;
-      color: #a8a29e;
-      font-size: 1rem;
-      line-height: 1;
-      flex-shrink: 0;
-      padding: 0 .2rem;
-    }
-
-    .alert-item button:hover {
-      color: #ef4444;
-    }
-
-    .no-data {
-      color: #94a3b8;
-      font-size: .82rem;
-    }
-  </style>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["ui-sans-serif", "system-ui", "sans-serif"],
+          },
+        },
+      },
+    };
+  </script>
 </head>
 
-<body>
-
-  <!-- ── Sidebar ───────────────────────────────────────────────── -->
-  <aside id="sidebar">
-    <div id="sidebar-header">
-      <h1>Price Tracker</h1>
-      <form id="add-form">
-        <input name="url" type="url" placeholder="Product URL (Amazon / Flipkart / Shopify)" required />
-        <input name="target_price" type="number" step="0.01" min="0" placeholder="Target price (optional)" />
-        <input name="name" type="text" placeholder="Name (auto-detected if blank)" />
-        <button type="submit" id="add-btn">+ Track Product</button>
-      </form>
-    </div>
-    <div id="product-scroll">
-      <h2>Tracked Products</h2>
-      <div id="product-list"></div>
-    </div>
-  </aside>
-
-  <!-- ── Main content ──────────────────────────────────────────── -->
-  <main id="content">
-    <div id="placeholder">
-      <p>Select a product from the sidebar<br>to view its price history chart.</p>
-    </div>
-
-    <div id="chart-section" class="card">
-      <div id="chart-title-row">
-        <h2 id="chart-title"></h2>
-        <a id="open-product-link" href="#" target="_blank" rel="noopener noreferrer" title="Open product page">
-          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-          Open
-        </a>
+<body class="min-h-screen bg-stone-950 text-stone-100 antialiased">
+  <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+    <section class="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div class="rounded-3xl border border-stone-800 bg-stone-900 p-5 shadow-lg shadow-black/20">
+        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">Tracker</p>
+        <h1 class="mt-3 text-3xl font-semibold tracking-tight text-stone-50">Track products across stores.</h1>
+        <p class="mt-3 text-sm leading-6 text-stone-400">Add a product URL, keep the lowest live price cached, and drill into a dedicated detail page for history and link management.</p>
       </div>
-      <div id="chart-meta"></div>
-      <canvas id="priceChart" height="100"></canvas>
-      <div id="chart-actions">
-        <button class="btn btn-primary" onclick="manualCheck(event)">Check Now</button>
-        <button class="btn btn-danger" onclick="deleteProduct(event)">Remove</button>
-      </div>
-    </div>
 
-    <div id="alerts-section" class="card">
-      <h3>Recent Price Alerts</h3>
-      <div id="alerts-list"></div>
-    </div>
+      <div class="rounded-3xl border border-stone-800 bg-stone-900 p-5 shadow-lg shadow-black/20">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">Add Product</p>
+            <h2 class="mt-2 text-lg font-semibold text-stone-50">Start tracking a new item</h2>
+          </div>
+          <div id="form-status" class="text-xs text-stone-500"></div>
+        </div>
+        <form id="add-form" class="grid gap-3 md:grid-cols-2">
+          <input class="md:col-span-2 w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500" name="url" type="url" placeholder="Product URL (Amazon / Flipkart / Shopify / Myntra)" required />
+          <input class="w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500" name="target_price" type="number" step="0.01" min="0" placeholder="Target price (optional)" />
+          <input class="w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500" name="name" type="text" placeholder="Name (auto-detected if blank)" />
+          <button class="md:col-span-2 inline-flex items-center justify-center rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:bg-stone-700" type="submit" id="add-btn">+ Track Product</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="rounded-3xl border border-stone-800 bg-stone-900 p-5 shadow-lg shadow-black/20">
+      <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">Dashboard</p>
+          <h2 class="mt-2 text-xl font-semibold text-stone-50">Tracked products</h2>
+        </div>
+        <div id="product-count" class="text-sm text-stone-400"></div>
+      </div>
+
+      <div id="empty-state" class="hidden rounded-3xl border border-dashed border-stone-800 bg-stone-950 px-6 py-14 text-center">
+        <p class="text-base font-medium text-stone-300">No tracked products yet.</p>
+        <p class="mt-2 text-sm text-stone-500">Add a product above to start collecting prices and product images.</p>
+      </div>
+
+      <div id="product-grid" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
+    </section>
   </main>
 
   <script>
-    // ─── State ────────────────────────────────────────────────────────────────────
-    let selectedProduct = null;
-    let chart = null;
+    let pollTimer = null;
 
-    // ─── Init ─────────────────────────────────────────────────────────────────────
     document.addEventListener("DOMContentLoaded", () => {
       loadProducts();
-      loadAlerts();
     });
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────────
     function formatPrice(currency, price) {
       if (price == null) return "—";
-      return `${currency} ${parseFloat(price).toFixed(2)}`;
+      const value = Number(price);
+      if (!Number.isFinite(value)) return "—";
+      try {
+        return new Intl.NumberFormat(
+          currency === "INR" ? "en-IN" : undefined,
+          {
+            style: "currency",
+            currency: currency || "USD",
+            maximumFractionDigits: 2,
+          }
+        ).format(value);
+      } catch {
+        return `${currency || ""} ${value.toFixed(2)}`.trim();
+      }
     }
 
-    function timeAgo(iso) {
-      if (!iso) return "never";
-      const diff = Date.now() - new Date(iso).getTime();
-      const mins = Math.floor(diff / 60000);
-      if (mins < 1) return "just now";
-      if (mins < 60) return `${mins}m ago`;
-      const hrs = Math.floor(mins / 60);
-      if (hrs < 24) return `${hrs}h ago`;
-      return `${Math.floor(hrs / 24)}d ago`;
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      }[char]));
     }
 
-    // ─── Add product form ─────────────────────────────────────────────────────────
-    document.getElementById("add-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const form = e.target;
-      const btn = document.getElementById("add-btn");
+    function renderSiteBadges(product) {
+      const labels = [...new Set(
+        ((product.links && product.links.length
+          ? product.links.map((link) => link.source_label || link.platform)
+          : [product.source_label || product.platform])
+          .filter(Boolean))
+      )];
+      return labels.map((label) => `
+        <span class="inline-flex items-center rounded-full border border-stone-700 bg-stone-800 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-300">
+          ${escapeHtml(label)}
+        </span>
+      `).join("");
+    }
+
+    function renderProductImage(product) {
+      if (product.image_url) {
+        return `
+          <img
+            src="${escapeHtml(product.image_url)}"
+            alt="${escapeHtml(product.name)}"
+            class="h-full w-full object-cover"
+            loading="lazy"
+          />
+        `;
+      }
+
+      return `
+        <div class="flex h-full w-full items-end bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 p-4">
+          <span class="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-500">No Image Yet</span>
+        </div>
+      `;
+    }
+
+    function startPoll() {
+      if (pollTimer) return;
+      pollTimer = setInterval(loadProducts, 5000);
+    }
+
+    function stopPoll() {
+      if (!pollTimer) return;
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+
+    async function loadProducts() {
+      const res = await fetch("/api/products");
+      const products = await res.json();
+      const grid = document.getElementById("product-grid");
+      const emptyState = document.getElementById("empty-state");
+      const count = document.getElementById("product-count");
+
+      grid.innerHTML = "";
+      count.textContent = `${products.length} tracked`;
+
+      if (!products.length) {
+        emptyState.classList.remove("hidden");
+        stopPoll();
+        return;
+      }
+
+      emptyState.classList.add("hidden");
+
+      products.forEach((product) => {
+        const card = document.createElement("a");
+        card.href = `/products/${product.id}`;
+        card.className = "group overflow-hidden rounded-[1.3rem] border border-stone-800 bg-stone-950 transition hover:-translate-y-0.5 hover:border-stone-700 hover:shadow-xl hover:shadow-black/20";
+        card.innerHTML = `
+          <div class="aspect-[7/5] overflow-hidden border-b border-stone-800 bg-stone-900">
+            ${renderProductImage(product)}
+          </div>
+          <div class="space-y-1.5 p-2.5">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h3 class="truncate text-[13px] font-semibold text-stone-50" title="${escapeHtml(product.name)}">${escapeHtml(product.name)}</h3>
+                <p class="mt-0.5 text-xs font-semibold text-amber-300">${formatPrice(product.currency, product.current_price)}</p>
+              </div>
+              <span class="inline-flex shrink-0 items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-300 transition group-hover:border-sky-400 group-hover:text-sky-200">Details</span>
+            </div>
+            ${product.current_price == null ? `<div class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending scrape</div>` : ""}
+            ${product.target_price != null ? `<p class="text-xs text-stone-500">Target: ${formatPrice(product.currency, product.target_price)}</p>` : ""}
+            <div class="flex flex-wrap gap-1.5">${renderSiteBadges(product)}</div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+
+      const hasPending = products.some(
+        (product) => product.current_price == null || (product.name || "").toLowerCase().startsWith("pending -")
+      );
+      hasPending ? startPoll() : stopPoll();
+    }
+
+    document.getElementById("add-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.target;
+      const button = document.getElementById("add-btn");
+      const status = document.getElementById("form-status");
       const payload = {
         url: form.url.value.trim(),
         target_price: form.target_price.value ? parseFloat(form.target_price.value) : null,
         name: form.name.value.trim() || null,
       };
 
-      btn.textContent = "Scraping…";
-      btn.disabled = true;
+      button.textContent = "Queueing…";
+      button.disabled = true;
+      status.textContent = "";
       try {
         const res = await fetch("/api/products", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+
         if (!res.ok) {
           const err = await res.json();
           alert("Error: " + (err.detail || JSON.stringify(err)));
-        } else {
-          form.reset();
-          await loadProducts();
-        }
-      } finally {
-        btn.textContent = "+ Track Product";
-        btn.disabled = false;
-      }
-    });
-
-    // ─── Product list ─────────────────────────────────────────────────────────────
-    async function loadProducts() {
-      const res = await fetch("/api/products");
-      const products = await res.json();
-      const container = document.getElementById("product-list");
-      container.innerHTML = "";
-
-      if (!products.length) {
-        container.innerHTML = '<p class="no-data">No products tracked yet.</p>';
-        return;
-      }
-
-      products.forEach((p) => {
-        const card = document.createElement("div");
-        card.className = "product-card" + (selectedProduct?.id === p.id ? " active" : "");
-        card.innerHTML = `
-          <div class="platform-badge">${p.platform}</div>
-          <div class="card-top">
-            <h3 title="${p.name}">${p.name}</h3>
-            <a class="open-link" href="${p.url}" target="_blank" rel="noopener noreferrer" title="Open product page">↗</a>
-          </div>
-          <div class="price">${formatPrice(p.currency, p.current_price)}</div>
-          ${p.target_price != null ? `<div class="target">Target: ${formatPrice(p.currency, p.target_price)}</div>` : ""}
-        `;
-        card.addEventListener("click", () => selectProduct(p));
-        container.appendChild(card);
-      });
-    }
-
-    // ─── Select product → show chart ─────────────────────────────────────────────
-    async function selectProduct(product) {
-      selectedProduct = product;
-      document.getElementById("placeholder").style.display = "none";
-      document.getElementById("chart-section").style.display = "block";
-      document.getElementById("chart-title").textContent = product.name;
-      document.getElementById("open-product-link").href = product.url;
-      renderChartMeta(product);
-      await loadChart(product.id);
-      await loadProducts(); // re-render to update the active card highlight
-    }
-
-    function renderChartMeta(product) {
-      const meta = document.getElementById("chart-meta");
-      const parts = [];
-      if (product.last_checked_at) parts.push(`Last checked ${timeAgo(product.last_checked_at)}`);
-      if (product.target_price != null)
-        parts.push(`Alert below ${formatPrice(product.currency, product.target_price)}`);
-      meta.textContent = parts.join(" · ");
-    }
-
-    // ─── Chart ────────────────────────────────────────────────────────────────────
-    async function loadChart(productId) {
-      const res = await fetch(`/api/products/${productId}/prices?limit=300`);
-      const data = await res.json();
-      const points = data.data || [];
-
-      const labels = points.map((p) =>
-        new Date(p.scraped_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-      );
-      const prices = points.map((p) => p.price);
-
-      if (chart) chart.destroy();
-      chart = new Chart(document.getElementById("priceChart"), {
-        type: "line",
-        data: {
-          labels,
-          datasets: [{
-            label: `Price (${data.currency || ""})`,
-            data: prices,
-            borderColor: "#3b82f6",
-            backgroundColor: "rgba(59,130,246,.08)",
-            fill: true,
-            tension: 0.35,
-            pointRadius: prices.length > 50 ? 2 : 4,
-            pointHoverRadius: 6,
-          }],
-        },
-        options: {
-          responsive: true,
-          interaction: { mode: "index", intersect: false },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: (ctx) => `${data.currency} ${ctx.parsed.y.toFixed(2)}`,
-              },
-            },
-          },
-          scales: {
-            x: {
-              ticks: { maxTicksLimit: 8, maxRotation: 0 },
-              grid: { display: false },
-            },
-            y: {
-              beginAtZero: false,
-              ticks: { callback: (v) => `${data.currency} ${v.toFixed(0)}` },
-            },
-          },
-        },
-      });
-    }
-
-    // ─── Manual check ─────────────────────────────────────────────────────────────
-    async function manualCheck(e) {
-      if (!selectedProduct) return;
-      const btn = e.target;
-      btn.textContent = "Checking…";
-      btn.disabled = true;
-      try {
-        const res = await fetch(`/api/products/${selectedProduct.id}/check`, { method: "POST" });
-        if (!res.ok) {
-          alert("Check failed — see server logs");
           return;
         }
-        const updated = await res.json();
-        selectedProduct = updated;
-        renderChartMeta(updated);
-        await loadChart(updated.id);
+
+        form.reset();
+        status.textContent = "Tracking queued.";
         await loadProducts();
-        await loadAlerts();
+        startPoll();
       } finally {
-        btn.textContent = "Check Now";
-        btn.disabled = false;
+        button.textContent = "+ Track Product";
+        button.disabled = false;
       }
-    }
-
-    // ─── Delete product ───────────────────────────────────────────────────────────
-    async function deleteProduct(e) {
-      if (!selectedProduct) return;
-      if (!confirm(`Remove "${selectedProduct.name}" from tracking?`)) return;
-      const btn = e.target;
-      btn.disabled = true;
-      try {
-        await fetch(`/api/products/${selectedProduct.id}`, { method: "DELETE" });
-        selectedProduct = null;
-        if (chart) { chart.destroy(); chart = null; }
-        document.getElementById("chart-section").style.display = "none";
-        document.getElementById("placeholder").style.display = "flex";
-        await loadProducts();
-        await loadAlerts();
-      } finally {
-        btn.disabled = false;
-      }
-    }
-
-    // ─── Alerts ───────────────────────────────────────────────────────────────────
-    async function loadAlerts() {
-      const res = await fetch("/api/alerts?limit=20");
-      const alerts = await res.json();
-      const container = document.getElementById("alerts-list");
-
-      if (!alerts.length) {
-        container.innerHTML = '<p class="no-data">No alerts yet.</p>';
-        return;
-      }
-
-      container.innerHTML = alerts.map((a) => `
-    <div class="alert-item">
-      <div>
-        <div>${a.message}</div>
-        <div class="alert-channel">${a.channel} · ${timeAgo(a.created_at)}</div>
-      </div>
-      <button onclick="dismissAlert(${a.id})" title="Dismiss">✕</button>
-    </div>
-  `).join("");
-    }
-
-    async function dismissAlert(alertId) {
-      await fetch(`/api/alerts/${alertId}`, { method: "DELETE" });
-      await loadAlerts();
-    }
+    });
   </script>
 </body>
 
