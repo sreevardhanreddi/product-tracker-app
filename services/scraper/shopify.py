@@ -23,6 +23,19 @@ _PRICE_SELECTORS = [
     "[class*='price']",
 ]
 
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
+
+_JSON_HEADERS = {
+    "User-Agent": _USER_AGENT,
+    "Accept": "application/json,text/plain,*/*",
+    "Accept-Language": "en-IN,en;q=0.9",
+    "Referer": "https://www.google.com/",
+}
+
 
 class ShopifyScraper(BaseScraper):
     """
@@ -47,7 +60,12 @@ class ShopifyScraper(BaseScraper):
         handle = parsed.path.rstrip("/").split("/")[-1]
         api_url = f"{parsed.scheme}://{parsed.hostname}/products/{handle}.json"
 
-        r = httpx.get(api_url, timeout=10, follow_redirects=True)
+        r = httpx.get(
+            api_url,
+            headers=_JSON_HEADERS,
+            timeout=10,
+            follow_redirects=True,
+        )
         r.raise_for_status()
         data = r.json().get("product")
         if not data:
