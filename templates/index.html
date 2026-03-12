@@ -117,6 +117,16 @@
       return `Checked ${Math.floor(hrs / 24)}d ago`;
     }
 
+    function formatDate(iso) {
+      const d = parseApiDate(iso);
+      if (!d || Number.isNaN(d.getTime())) return "Unknown";
+      return d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    }
+
     function getPriceRange(product) {
       const prices = (product.links || [])
         .map((link) => Number(link.current_price))
@@ -213,9 +223,11 @@
               <div class="min-w-0">
                 <h3 class="truncate text-[13px] font-semibold text-stone-50" title="${escapeHtml(product.name)}">${escapeHtml(product.name)}</h3>
                 <p class="mt-1 text-[11px] text-stone-500">${timeAgo(product.last_checked_at)}</p>
+                <p class="mt-0.5 text-[11px] text-stone-600">Created ${formatDate(product.created_at)}</p>
               </div>
               <span class="inline-flex shrink-0 items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-300 transition group-hover:border-sky-400 group-hover:text-sky-200">Details</span>
             </div>
+            <div class="flex flex-wrap gap-1.5">${renderSiteBadges(product)}</div>
             <div class="grid grid-cols-3 gap-2 rounded-2xl border border-stone-800 bg-stone-900/60 p-2">
               <div>
                 <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-stone-500">Current</p>
@@ -232,7 +244,6 @@
             </div>
             ${product.current_price == null ? `<div class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending scrape</div>` : ""}
             ${product.target_price != null ? `<p class="text-xs text-stone-500">Target: ${formatPrice(product.currency, product.target_price)}</p>` : ""}
-            <div class="flex flex-wrap gap-1.5">${renderSiteBadges(product)}</div>
           </div>
         `;
         grid.appendChild(card);
