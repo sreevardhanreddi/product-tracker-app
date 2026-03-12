@@ -10,6 +10,7 @@ class Platform(str, Enum):
     SHOPIFY = "shopify"
     MYNTRA = "myntra"
     HEALTHKART = "healthkart"
+    TRUEBASICS = "truebasics"
 
 
 def detect_platform(url: str) -> Platform:
@@ -34,6 +35,8 @@ def detect_platform(url: str) -> Platform:
         return Platform.MYNTRA
     if "healthkart." in host:
         return Platform.HEALTHKART
+    if "truebasics." in host:
+        return Platform.TRUEBASICS
 
     # Shopify probe via the public JSON API endpoint
     handle = parsed.path.rstrip("/").split("/")[-1]
@@ -77,6 +80,8 @@ def get_scraper(url: str):
     elif platform == Platform.MYNTRA:
         return MyntraScraper(**kwargs), platform.value
     elif platform == Platform.HEALTHKART:
+        return HealthKartScraper(**kwargs), platform.value
+    elif platform == Platform.TRUEBASICS:
         return HealthKartScraper(**kwargs), platform.value
     else:
         return ShopifyScraper(**kwargs), platform.value
