@@ -9,11 +9,7 @@ from sqlmodel import Session, select
 from database import get_session
 from models import Product, ProductLink
 from schemas.product import ProductCreate, ProductLinkCreate, ProductRead, ProductUpdate
-from services.price_service import (
-    check_product_link_price,
-    check_product_price,
-    refresh_product_cache,
-)
+from services.price_service import check_product_link_price, refresh_product_cache
 from services.scraper.detector import detect_platform
 
 logger = logging.getLogger(__name__)
@@ -281,16 +277,35 @@ def manual_check_link(
 
 @router.post("/products/{product_id}/check", response_model=ProductRead)
 def manual_check(product_id: int, session: Session = Depends(get_session)):
-    """Trigger an immediate price check for all links under a product."""
+    """Queue an immediate Celery price check for all active links under a product."""
     product = session.get(Product, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
-    rows = check_product_price(product_id, session)
-    if not rows:
+    link_ids = session.exec(
+        select(ProductLink.id).where(
+            ProductLink.product_id == product_id,
+            ProductLink.is_active == True,  # noqa: E712
+        )
+    ).all()
+    if not link_ids:
+        raise HTTPException(status_code=404, detail="No active product links found")
+
+    from tasks.price_check import check_single_product_link
+
+    queued = 0
+    for link_id in link_ids:
+        try:
+            check_single_product_link.delay(link_id)
+            queued += 1
+        except Exception:
+            logger.exception(
+                "Failed to enqueue manual price check for product_link_id=%s", link_id
+            )
+
+    if queued == 0:
         raise HTTPException(
-            status_code=502, detail="No successful scrape — check server logs"
+            status_code=502, detail="Unable to queue scrape — check worker logs"
         )
 
-    session.refresh(product)
     return product

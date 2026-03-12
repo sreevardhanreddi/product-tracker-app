@@ -38,7 +38,9 @@
 
     <div id="detail-shell" class="hidden min-w-0 space-y-6 overflow-x-hidden">
       <section class="overflow-hidden rounded-[1.75rem] border border-stone-800 bg-stone-900 shadow-xl shadow-black/20">
-        <div class="grid min-w-0 gap-0 lg:grid-cols-[minmax(0,1fr)_240px]">
+        <div class="grid min-w-0 gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <div id="product-image-shell" class="aspect-[16/10] max-h-[180px] border-b border-stone-800 bg-stone-950 lg:aspect-auto lg:max-h-none lg:border-b-0 lg:border-r"></div>
+
           <div class="space-y-3 p-4 sm:p-5">
             <div class="min-w-0">
               <p class="text-[11px] font-semibold uppercase tracking-[0.28em] text-stone-500">Product</p>
@@ -73,8 +75,6 @@
               </button>
             </div>
           </div>
-
-          <div id="product-image-shell" class="aspect-[16/10] max-h-[180px] border-t border-stone-800 bg-stone-950 lg:aspect-auto lg:max-h-none lg:border-l lg:border-t-0"></div>
         </div>
       </section>
 
@@ -341,6 +341,18 @@
           .sort((a, b) => a.x - b.x);
       }
 
+      function getYAxisMax(datasets) {
+        const values = datasets
+          .flatMap((dataset) => dataset.data || [])
+          .map((point) => Number(point.y))
+          .filter((value) => Number.isFinite(value));
+
+        if (!values.length) return undefined;
+
+        const peak = Math.max(...values);
+        return peak <= 0 ? peak + 1 : peak * 1.15;
+      }
+
       let datasets = [];
 
       if (hasMultipleLinks) {
@@ -370,6 +382,8 @@
           pointHoverRadius: 6,
         }];
       }
+
+      const suggestedYMax = getYAxisMax(datasets);
 
       if (chart) chart.destroy();
       chart = new Chart(document.getElementById("priceChart"), {
@@ -415,6 +429,7 @@
             },
             y: {
               beginAtZero: false,
+              suggestedMax: suggestedYMax,
               ticks: {
                 color: "#a8a29e",
                 callback: (value) => `${curr} ${Number(value).toFixed(0)}`,
@@ -430,18 +445,18 @@
     async function manualCheck(event) {
       if (!selectedProduct) return;
       const btn = event.currentTarget;
-      btn.textContent = "Checking…";
+      btn.textContent = "Queueing…";
       btn.disabled = true;
       try {
         const res = await fetch(`/api/products/${selectedProduct.id}/check`, { method: "POST" });
         if (!res.ok) {
-          alert("Check failed — see server logs");
+          alert("Unable to queue check — see server logs");
           return;
         }
         selectedProduct = await res.json();
         renderProduct(selectedProduct);
         renderProductLinks(selectedProduct);
-        await loadChart(selectedProduct.id);
+        setTimeout(() => loadProduct(), 1500);
       } finally {
         btn.textContent = "Check Now";
         btn.disabled = false;
