@@ -93,7 +93,23 @@
               <p class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">History</p>
               <h2 class="mt-2 text-xl font-semibold text-stone-50">Price chart</h2>
             </div>
-            <div id="chart-meta" class="max-w-md text-right text-xs leading-5 text-stone-400"></div>
+            <div class="flex flex-col items-start gap-3 sm:items-end">
+              <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-400" for="chart-range-select">
+                <span>Range</span>
+                <select
+                  id="chart-range-select"
+                  class="rounded-xl border border-stone-700 bg-stone-950 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-200 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                  onchange="handleChartRangeChange(event)"
+                >
+                  <option value="last500" selected>Last 500 entries</option>
+                  <option value="days30">Last 30 days</option>
+                  <option value="days90">Last 90 days</option>
+                  <option value="days180">Last 180 days</option>
+                  <option value="all">All time</option>
+                </select>
+              </label>
+              <div id="chart-meta" class="max-w-md text-left text-xs leading-5 text-stone-400 sm:text-right"></div>
+            </div>
           </div>
           <div class="min-w-0 overflow-hidden rounded-2xl border border-stone-800 bg-stone-950/60 p-3">
             <div class="relative h-72 w-full min-w-0 sm:h-[30rem]">
@@ -110,6 +126,14 @@
     let selectedProduct = null;
     let chart = null;
     const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
+    let selectedChartRange = "last500";
+    const chartRangeConfig = {
+      last500: { label: "Last 500 entries", limit: 500 },
+      days30: { label: "Last 30 days", days: 30 },
+      days90: { label: "Last 90 days", days: 90 },
+      days180: { label: "Last 180 days", days: 180 },
+      all: { label: "All time", allTime: true },
+    };
 
     document.addEventListener("DOMContentLoaded", async () => {
       await loadProduct();
@@ -157,6 +181,25 @@
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+      });
+    }
+
+    function formatChartDate(value) {
+      const d = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      });
+    }
+
+    function formatChartTooltipDate(value) {
+      const d = value instanceof Date ? value : new Date(value);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
       });
     }
 
@@ -241,11 +284,88 @@
     }
 
     function renderChartMeta(product) {
+      const range = chartRangeConfig[selectedChartRange] || chartRangeConfig.last500;
       const parts = [];
+      parts.push(range.label);
+      parts.push(shouldGroupByDay() ? "Grouped by day" : "All entries");
       if (product.last_checked_at) parts.push(`Last checked ${timeAgo(product.last_checked_at)}`);
       if (product.target_price != null) parts.push(`Alert below ${formatPrice(product.currency, product.target_price)}`);
       parts.push(`Timezone ${browserTimeZone}`);
       document.getElementById("chart-meta").textContent = parts.join(" · ");
+    }
+
+    function buildChartUrl(currentProductId) {
+      const range = chartRangeConfig[selectedChartRange] || chartRangeConfig.last500;
+      const url = new URL(`/api/products/${currentProductId}/prices`, window.location.origin);
+
+      if (range.allTime) {
+        url.searchParams.set("all_time", "true");
+        return url.toString();
+      }
+
+      if (range.days) {
+        const fromDate = new Date();
+        fromDate.setHours(0, 0, 0, 0);
+        fromDate.setDate(fromDate.getDate() - (range.days - 1));
+        url.searchParams.set("from_date", fromDate.toISOString());
+        return url.toString();
+      }
+
+      url.searchParams.set("limit", String(range.limit));
+      url.searchParams.set("latest", "true");
+      return url.toString();
+    }
+
+    function toDailyXY(pts) {
+      const dailyPoints = new Map();
+      const sortedPoints = [...pts].sort(
+        (a, b) => {
+          const left = parseApiDate(a.scraped_at);
+          const right = parseApiDate(b.scraped_at);
+          return (left?.getTime() ?? 0) - (right?.getTime() ?? 0);
+        }
+      );
+
+      for (const point of sortedPoints) {
+        const scrapedAt = parseApiDate(point.scraped_at);
+        const price = Number(point.price);
+        if (!scrapedAt || Number.isNaN(scrapedAt.getTime()) || !Number.isFinite(price)) continue;
+
+        const dayStamp = new Date(
+          scrapedAt.getFullYear(),
+          scrapedAt.getMonth(),
+          scrapedAt.getDate()
+        ).getTime();
+
+        // Keep the latest sample from each day so the chart reflects the closing tracked price.
+        dailyPoints.set(dayStamp, { x: dayStamp, y: price });
+      }
+
+      return [...dailyPoints.values()].sort((a, b) => a.x - b.x);
+    }
+
+    function toEntryXY(pts) {
+      return pts
+        .map((point) => {
+          const scrapedAt = parseApiDate(point.scraped_at);
+          const price = Number(point.price);
+          if (!scrapedAt || Number.isNaN(scrapedAt.getTime()) || !Number.isFinite(price)) return null;
+          return { x: scrapedAt.getTime(), y: price };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.x - b.x);
+    }
+
+    function shouldGroupByDay() {
+      return !["last500", "days30"].includes(selectedChartRange);
+    }
+
+    async function handleChartRangeChange(event) {
+      selectedChartRange = event.target.value;
+      if (selectedProduct) {
+        renderChartMeta(selectedProduct);
+        await loadChart(selectedProduct.id);
+      }
     }
 
     function renderProductLinks(product) {
@@ -320,7 +440,7 @@
     }
 
     async function loadChart(currentProductId) {
-      const res = await fetch(`/api/products/${currentProductId}/prices?limit=300`);
+      const res = await fetch(buildChartUrl(currentProductId));
       const data = await res.json();
       const points = data.data || [];
       const links = selectedProduct?.links || [];
@@ -335,12 +455,6 @@
         { border: "#44403c", bg: "rgba(68,64,60,.10)" },
       ];
 
-      function toXY(pts) {
-        return pts
-          .map((point) => ({ x: parseApiDate(point.scraped_at).getTime(), y: point.price }))
-          .sort((a, b) => a.x - b.x);
-      }
-
       function getYAxisMax(datasets) {
         const values = datasets
           .flatMap((dataset) => dataset.data || [])
@@ -354,23 +468,25 @@
       }
 
       let datasets = [];
+      const mapPointsForChart = shouldGroupByDay() ? toDailyXY : toEntryXY;
 
       if (hasMultipleLinks) {
         datasets = links.map((link, idx) => {
           const color = colorPalette[idx % colorPalette.length];
+          const seriesData = mapPointsForChart(points.filter((point) => point.product_link_id === link.id));
           return {
             label: link.source_label || link.platform,
-            data: toXY(points.filter((point) => point.product_link_id === link.id)),
+            data: seriesData,
             borderColor: color.border,
             backgroundColor: color.bg,
             fill: false,
             tension: 0.35,
-            pointRadius: 2,
+            pointRadius: seriesData.length > 90 ? 2 : 3,
             pointHoverRadius: 5,
           };
         });
       } else {
-        const xy = toXY(points);
+        const xy = mapPointsForChart(points);
         datasets = [{
           label: `Price (${curr})`,
           data: xy,
@@ -378,7 +494,7 @@
           backgroundColor: "rgba(87,83,78,.08)",
           fill: true,
           tension: 0.35,
-          pointRadius: xy.length > 50 ? 2 : 4,
+          pointRadius: xy.length > 90 ? 2 : 4,
           pointHoverRadius: 6,
         }];
       }
@@ -406,7 +522,9 @@
               titleColor: "#fafaf9",
               bodyColor: "#e7e5e4",
               callbacks: {
-                title: (items) => formatBrowserDate(new Date(items[0].parsed.x).toISOString()),
+                title: (items) => shouldGroupByDay()
+                  ? formatChartTooltipDate(items[0].parsed.x)
+                  : formatBrowserDate(new Date(items[0].parsed.x).toISOString()),
                 label: (ctx) => {
                   const value = Number(ctx.parsed?.y);
                   if (!Number.isFinite(value)) return `${ctx.dataset.label}: —`;
@@ -422,7 +540,7 @@
                 maxTicksLimit: 8,
                 maxRotation: 0,
                 color: "#a8a29e",
-                callback: (value) => formatBrowserDate(new Date(value).toISOString()),
+                callback: (value) => formatChartDate(value),
               },
               grid: { color: "rgba(68,64,60,.35)" },
               border: { color: "rgba(68,64,60,.5)" },
