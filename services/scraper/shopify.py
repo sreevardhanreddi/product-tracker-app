@@ -1,4 +1,4 @@
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from playwright.sync_api import sync_playwright
@@ -59,6 +59,7 @@ class ShopifyScraper(BaseScraper):
         parsed = urlparse(url)
         handle = parsed.path.rstrip("/").split("/")[-1]
         api_url = f"{parsed.scheme}://{parsed.hostname}/products/{handle}.json"
+        variant_id = self._extract_variant_id(url)
 
         r = httpx.get(
             api_url,
@@ -71,10 +72,10 @@ class ShopifyScraper(BaseScraper):
         if not data:
             raise ScraperError("No 'product' key in Shopify JSON response")
 
-        variant = data["variants"][0]
+        variant = self._select_variant(data.get("variants", []), variant_id)
         price = float(variant["price"])
         in_stock = bool(variant.get("available", True))
-        image_url = data["images"][0]["src"] if data.get("images") else None
+        image_url = self._select_image_url(data, variant)
         # Shopify JSON doesn't always expose currency; fall back to USD
         currency = variant.get("price_currency") or "USD"
 
@@ -131,3 +132,46 @@ class ShopifyScraper(BaseScraper):
                 )
             finally:
                 browser.close()
+
+    @staticmethod
+    def _extract_variant_id(url: str) -> str | None:
+        query = parse_qs(urlparse(url).query)
+        variant_ids = query.get("variant")
+        return variant_ids[0] if variant_ids else None
+
+    @staticmethod
+    def _select_variant(variants: list[dict], variant_id: str | None) -> dict:
+        if not variants:
+            raise ScraperError("No variants found in Shopify JSON response")
+
+        if variant_id:
+            for variant in variants:
+                if str(variant.get("id")) == variant_id:
+                    return variant
+
+        return variants[0]
+
+    @staticmethod
+    def _select_image_url(data: dict, variant: dict) -> str | None:
+        image_id = variant.get("image_id")
+        if image_id and data.get("images"):
+            for image in data["images"]:
+                if str(image.get("id")) == str(image_id):
+                    return image.get("src")
+
+        if variant.get("featured_image"):
+            featured_image = variant["featured_image"]
+            if isinstance(featured_image, dict):
+                return featured_image.get("src")
+
+        if data.get("image"):
+            image = data["image"]
+            if isinstance(image, dict):
+                return image.get("src")
+
+        if data.get("images"):
+            first_image = data["images"][0]
+            if isinstance(first_image, dict):
+                return first_image.get("src")
+
+        return None
