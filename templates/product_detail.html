@@ -377,6 +377,7 @@
           ${link.current_price != null
             ? `<span class="whitespace-nowrap font-semibold text-stone-100">${formatPrice(link.currency, link.current_price)}</span>`
             : `<span class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending</span>`}
+          <button class="shrink-0 self-end leading-none text-emerald-400 transition hover:text-emerald-300 disabled:opacity-40 sm:self-auto" title="Debug: track price now" onclick="debugLink(event, ${product.id}, ${link.id})"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></button>
           <button class="shrink-0 self-end text-base leading-none text-rose-400 transition hover:text-rose-300 sm:self-auto" title="Remove link" onclick="removeLink(event, ${product.id}, ${link.id})">✕</button>
         </div>
       `).join("");
@@ -436,6 +437,47 @@
         await loadChart(selectedProduct.id);
       } finally {
         btn.disabled = false;
+      }
+    }
+
+    async function debugLink(event, currentProductId, linkId) {
+      event.stopPropagation();
+      const btn = event.currentTarget;
+      btn.disabled = true;
+      const originalHTML = btn.innerHTML;
+      btn.innerHTML = "⏳";
+      console.group(`[Debug] Tracking link ${linkId} for product ${currentProductId}`);
+      console.log("POST", `/api/products/${currentProductId}/links/${linkId}/check`);
+      try {
+        const res = await fetch(`/api/products/${currentProductId}/links/${linkId}/check`, { method: "POST" });
+        if (!res.ok) {
+          const err = await res.json();
+          console.error("Scrape failed:", err);
+          btn.textContent = "❌";
+          setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
+          return;
+        }
+        const product = await res.json();
+        const link = (product.links || []).find((l) => l.id === linkId);
+        if (link) {
+          console.log("Platform      :", link.platform);
+          console.log("URL           :", link.url);
+          console.log("Current price :", link.current_price, link.currency);
+          console.log("Full link data:", link);
+        }
+        console.log("Full product  :", product);
+        selectedProduct = product;
+        renderProduct(selectedProduct);
+        renderProductLinks(selectedProduct);
+        await loadChart(selectedProduct.id);
+        btn.innerHTML = "✅";
+        setTimeout(() => { btn.innerHTML = originalHTML; btn.disabled = false; }, 2000);
+      } catch (err) {
+        console.error("Request error:", err);
+        btn.innerHTML = "❌";
+        setTimeout(() => { btn.innerHTML = originalHTML; btn.disabled = false; }, 2000);
+      } finally {
+        console.groupEnd();
       }
     }
 
