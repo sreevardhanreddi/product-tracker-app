@@ -25,7 +25,8 @@
       <div class="rounded-3xl border border-stone-800 bg-stone-900 p-5 shadow-lg shadow-black/20">
         <p class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">Tracker</p>
         <h1 class="mt-3 text-3xl font-semibold tracking-tight text-stone-50">Track products across stores.</h1>
-        <p class="mt-3 text-sm leading-6 text-stone-400">Add a product URL, keep the lowest live price cached, and drill into a dedicated detail page for history and link management.</p>
+        <p class="mt-3 text-sm leading-6 text-stone-400">Add a product URL, keep the lowest live price cached, and drill
+          into a dedicated detail page for history and link management.</p>
       </div>
 
       <div class="rounded-3xl border border-stone-800 bg-stone-900 p-5 shadow-lg shadow-black/20">
@@ -37,10 +38,18 @@
           <div id="form-status" class="text-xs text-stone-500"></div>
         </div>
         <form id="add-form" class="grid gap-3 md:grid-cols-2">
-          <input class="md:col-span-2 w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500" name="url" type="url" placeholder="Product URL (Amazon / Flipkart / Shopify / Myntra)" required />
-          <input class="w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500" name="target_price" type="number" step="0.01" min="0" placeholder="Target price (optional)" />
-          <input class="w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500" name="name" type="text" placeholder="Name (auto-detected if blank)" />
-          <button class="md:col-span-2 inline-flex items-center justify-center rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:bg-stone-700" type="submit" id="add-btn">+ Track Product</button>
+          <input
+            class="md:col-span-2 w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500"
+            name="url" type="url" placeholder="Product URL (Amazon / Flipkart / Shopify / Myntra)" required />
+          <input
+            class="w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500"
+            name="target_price" type="number" step="0.01" min="0" placeholder="Target price (optional)" />
+          <input
+            class="w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-3 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500"
+            name="name" type="text" placeholder="Name (auto-detected if blank)" />
+          <button
+            class="md:col-span-2 inline-flex items-center justify-center rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:bg-stone-700"
+            type="submit" id="add-btn">+ Track Product</button>
         </form>
       </div>
     </section>
@@ -54,7 +63,8 @@
         <div id="product-count" class="text-sm text-stone-400"></div>
       </div>
 
-      <div id="empty-state" class="hidden rounded-3xl border border-dashed border-stone-800 bg-stone-950 px-6 py-14 text-center">
+      <div id="empty-state"
+        class="hidden rounded-3xl border border-dashed border-stone-800 bg-stone-950 px-6 py-14 text-center">
         <p class="text-base font-medium text-stone-300">No tracked products yet.</p>
         <p class="mt-2 text-sm text-stone-500">Add a product above to start collecting prices and product images.</p>
       </div>
@@ -62,6 +72,8 @@
       <div id="product-grid" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
     </section>
   </main>
+
+  {% include "_footer.html" %}
 
   <script>
     let pollTimer = null;

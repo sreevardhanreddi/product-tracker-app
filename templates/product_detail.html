@@ -22,16 +22,19 @@
 
 <body class="min-h-screen bg-stone-950 text-stone-100 antialiased">
   <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-    <a href="/" class="inline-flex w-fit items-center gap-2 rounded-full border border-stone-700 bg-stone-900 px-4 py-2 text-sm font-semibold text-stone-300 transition hover:border-stone-600 hover:text-stone-100">
+    <a href="/"
+      class="inline-flex w-fit items-center gap-2 rounded-full border border-stone-700 bg-stone-900 px-4 py-2 text-sm font-semibold text-stone-300 transition hover:border-stone-600 hover:text-stone-100">
       <span aria-hidden="true">←</span>
       Back to products
     </a>
 
-    <div id="loading-state" class="rounded-3xl border border-stone-800 bg-stone-900 px-6 py-16 text-center text-sm text-stone-400 shadow-lg shadow-black/20">
+    <div id="loading-state"
+      class="rounded-3xl border border-stone-800 bg-stone-900 px-6 py-16 text-center text-sm text-stone-400 shadow-lg shadow-black/20">
       Loading product details…
     </div>
 
-    <div id="not-found-state" class="hidden rounded-3xl border border-rose-500/20 bg-rose-500/10 px-6 py-16 text-center shadow-lg shadow-black/20">
+    <div id="not-found-state"
+      class="hidden rounded-3xl border border-rose-500/20 bg-rose-500/10 px-6 py-16 text-center shadow-lg shadow-black/20">
       <p class="text-lg font-semibold text-rose-200">Product not found.</p>
       <p class="mt-2 text-sm text-rose-100/70">The tracked product may have been removed.</p>
     </div>
@@ -39,7 +42,9 @@
     <div id="detail-shell" class="hidden min-w-0 space-y-6 overflow-x-hidden">
       <section class="overflow-hidden rounded-[1.75rem] border border-stone-800 bg-stone-900 shadow-xl shadow-black/20">
         <div class="grid min-w-0 gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <div id="product-image-shell" class="aspect-[16/10] max-h-[180px] border-b border-stone-800 bg-stone-950 lg:aspect-auto lg:max-h-none lg:border-b-0 lg:border-r"></div>
+          <div id="product-image-shell"
+            class="aspect-[16/10] max-h-[180px] border-b border-stone-800 bg-stone-950 lg:aspect-auto lg:max-h-none lg:border-b-0 lg:border-r">
+          </div>
 
           <div class="space-y-3 p-4 sm:p-5">
             <div class="min-w-0">
@@ -65,11 +70,17 @@
             </div>
 
             <div class="flex flex-wrap gap-2">
-              <button id="check-now-btn" class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-stone-700" onclick="manualCheck(event)">Check Now</button>
-              <a id="open-product-link" class="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-300 transition hover:border-sky-400 hover:bg-sky-500/15 hover:text-sky-200" href="#" target="_blank" rel="noopener noreferrer">
+              <button id="check-now-btn"
+                class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-stone-700"
+                onclick="manualCheck(event)">Check Now</button>
+              <a id="open-product-link"
+                class="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-300 transition hover:border-sky-400 hover:bg-sky-500/15 hover:text-sky-200"
+                href="#" target="_blank" rel="noopener noreferrer">
                 Open Product
               </a>
-              <button id="remove-product-btn" class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:bg-stone-700" onclick="deleteProduct(event)">
+              <button id="remove-product-btn"
+                class="inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:bg-stone-700"
+                onclick="deleteProduct(event)">
                 <span aria-hidden="true">✕</span>
                 Remove
               </button>
@@ -87,20 +98,20 @@
       </section>
 
       <section class="min-w-0">
-        <div class="min-w-0 overflow-hidden rounded-3xl border border-stone-800 bg-stone-900 p-5 shadow-lg shadow-black/20 sm:p-6">
+        <div
+          class="min-w-0 overflow-hidden rounded-3xl border border-stone-800 bg-stone-900 p-5 shadow-lg shadow-black/20 sm:p-6">
           <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div>
               <p class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">History</p>
               <h2 class="mt-2 text-xl font-semibold text-stone-50">Price chart</h2>
             </div>
             <div class="flex flex-col items-start gap-3 sm:items-end">
-              <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-400" for="chart-range-select">
+              <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-stone-400"
+                for="chart-range-select">
                 <span>Range</span>
-                <select
-                  id="chart-range-select"
+                <select id="chart-range-select"
                   class="rounded-xl border border-stone-700 bg-stone-950 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-200 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
-                  onchange="handleChartRangeChange(event)"
-                >
+                  onchange="handleChartRangeChange(event)">
                   <option value="last500" selected>Last 500 entries</option>
                   <option value="days30">Last 30 days</option>
                   <option value="days90">Last 90 days</option>
@@ -120,6 +131,8 @@
       </section>
     </div>
   </main>
+
+  {% include "_footer.html" %}
 
   <script>
     const productId = Number({{ product_id | tojson }});
@@ -375,8 +388,8 @@
           <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500 sm:min-w-14">${escapeHtml(link.source_label || link.platform)}</span>
           <a class="min-w-0 flex-1 break-all text-sky-300 transition hover:text-sky-200 sm:truncate sm:break-normal" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(link.url)}">${escapeHtml(link.url)}</a>
           ${link.current_price != null
-            ? `<span class="whitespace-nowrap font-semibold text-stone-100">${formatPrice(link.currency, link.current_price)}</span>`
-            : `<span class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending</span>`}
+          ? `<span class="whitespace-nowrap font-semibold text-stone-100">${formatPrice(link.currency, link.current_price)}</span>`
+          : `<span class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending</span>`}
           <button class="shrink-0 self-end leading-none text-emerald-400 transition hover:text-emerald-300 disabled:opacity-40 sm:self-auto" title="Debug: track price now" onclick="debugLink(event, ${product.id}, ${link.id})"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></button>
           <button class="shrink-0 self-end text-base leading-none text-rose-400 transition hover:text-rose-300 sm:self-auto" title="Remove link" onclick="removeLink(event, ${product.id}, ${link.id})">✕</button>
         </div>
