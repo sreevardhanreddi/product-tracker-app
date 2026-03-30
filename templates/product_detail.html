@@ -461,6 +461,7 @@
         const link = (product.links || []).find((l) => l.id === linkId);
         if (link) {
           console.log("Platform      :", link.platform);
+          console.log("Scrape method :", link.last_scrape_method ?? "unknown");
           console.log("URL           :", link.url);
           console.log("Current price :", link.current_price, link.currency);
           console.log("Full link data:", link);

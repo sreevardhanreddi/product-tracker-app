@@ -1,6 +1,6 @@
 from urllib.parse import parse_qs, urlparse
 
-import httpx
+import requests
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper, ScrapedProduct, ScraperError
@@ -50,22 +50,22 @@ class ShopifyScraper(BaseScraper):
 
     def scrape(self, url: str) -> ScrapedProduct:
         try:
-            return self._scrape_json(url)
+            return self._scrape_requests(url)
         except Exception:
             pass
         return self._scrape_playwright(url)
 
-    def _scrape_json(self, url: str) -> ScrapedProduct:
+    def _scrape_requests(self, url: str) -> ScrapedProduct:
         parsed = urlparse(url)
         handle = parsed.path.rstrip("/").split("/")[-1]
         api_url = f"{parsed.scheme}://{parsed.hostname}/products/{handle}.json"
         variant_id = self._extract_variant_id(url)
 
-        r = httpx.get(
+        r = requests.get(
             api_url,
             headers=_JSON_HEADERS,
             timeout=10,
-            follow_redirects=True,
+            allow_redirects=True,
         )
         r.raise_for_status()
         data = r.json().get("product")
@@ -86,6 +86,7 @@ class ShopifyScraper(BaseScraper):
             in_stock=in_stock,
             image_url=image_url,
             raw_price_text=variant["price"],
+            scrape_method="requests",
         )
 
     def _scrape_playwright(self, url: str) -> ScrapedProduct:
@@ -129,6 +130,7 @@ class ShopifyScraper(BaseScraper):
                     in_stock=True,
                     image_url=image_url,
                     raw_price_text=price_raw,
+                    scrape_method="browser",
                 )
             finally:
                 browser.close()

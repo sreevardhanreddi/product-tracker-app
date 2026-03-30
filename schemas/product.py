@@ -28,6 +28,7 @@ class ProductLinkRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_checked_at: Optional[datetime]
+    last_scrape_method: Optional[str]
 
     model_config = {"from_attributes": True}
 

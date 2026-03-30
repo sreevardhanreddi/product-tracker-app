@@ -1,7 +1,7 @@
 import json
 import re
 
-import httpx
+import requests
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper, ScrapedProduct, ScraperError
@@ -44,6 +44,12 @@ class HealthKartScraper(BaseScraper):
     """
 
     def scrape(self, url: str) -> ScrapedProduct:
+        requests_error: Exception | None = None
+        try:
+            return self._scrape_via_requests(url)
+        except Exception as e:
+            requests_error = e
+
         browser_error: Exception | None = None
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
@@ -59,7 +65,9 @@ class HealthKartScraper(BaseScraper):
                 html = page.content()
                 next_data = self._extract_next_data(html)
                 if next_data:
-                    return self._build_from_next_data(next_data)
+                    result = self._build_from_next_data(next_data)
+                    result.scrape_method = "browser"
+                    return result
 
                 name = self._extract_name(page)
                 price_raw, price = self._extract_price(page)
@@ -73,19 +81,17 @@ class HealthKartScraper(BaseScraper):
                     in_stock=in_stock,
                     image_url=image_url,
                     raw_price_text=price_raw,
+                    scrape_method="browser",
                 )
             except Exception as e:
                 browser_error = e
             finally:
                 browser.close()
 
-        try:
-            return self._scrape_via_http(url)
-        except Exception as http_error:
-            raise ScraperError(
-                f"HealthKart scrape failed via browser ({browser_error}) "
-                f"and HTTP fallback ({http_error})"
-            )
+        raise ScraperError(
+            f"HealthKart scrape failed via requests ({requests_error}) "
+            f"and browser fallback ({browser_error})"
+        )
 
     def _safe_goto(self, page, url: str) -> None:
         attempts = [
@@ -101,24 +107,26 @@ class HealthKartScraper(BaseScraper):
                 last_error = e
         raise ScraperError(f"Page navigation failed: {last_error}")
 
-    def _scrape_via_http(self, url: str) -> ScrapedProduct:
+    def _scrape_via_requests(self, url: str) -> ScrapedProduct:
         headers = {
             "User-Agent": _USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-IN,en;q=0.9",
         }
-        r = httpx.get(url, headers=headers, timeout=20, follow_redirects=True)
+        r = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
         r.raise_for_status()
         html = r.text
 
         # Prefer __NEXT_DATA__ (Next.js) - most reliable for HealthKart PDP
         next_data = self._extract_next_data(html)
         if next_data:
-            return self._build_from_next_data(next_data)
+            result = self._build_from_next_data(next_data)
+            result.scrape_method = "requests"
+            return result
 
         price_raw = self._extract_price_from_html(html)
         if not price_raw:
-            raise ScraperError("Price not found in HealthKart HTTP response")
+            raise ScraperError("Price not found in HealthKart requests response")
         price = self._parse_price(price_raw)
 
         ld = self._extract_ld_json(html)
@@ -144,6 +152,7 @@ class HealthKartScraper(BaseScraper):
             in_stock=in_stock,
             image_url=image_url,
             raw_price_text=price_raw,
+            scrape_method="requests",
         )
 
     def _extract_next_data(self, html: str) -> dict | None:

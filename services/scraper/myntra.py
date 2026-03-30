@@ -1,7 +1,7 @@
 import json
 import re
 
-import httpx
+import requests
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper, ScrapedProduct, ScraperError
@@ -33,6 +33,12 @@ class MyntraScraper(BaseScraper):
     """
 
     def scrape(self, url: str) -> ScrapedProduct:
+        requests_error: Exception | None = None
+        try:
+            return self._scrape_via_requests(url)
+        except Exception as e:
+            requests_error = e
+
         browser_error: Exception | None = None
         with sync_playwright() as pw:
             browser = pw.chromium.launch(
@@ -57,19 +63,17 @@ class MyntraScraper(BaseScraper):
                     in_stock=in_stock,
                     image_url=image_url,
                     raw_price_text=price_raw,
+                    scrape_method="browser",
                 )
             except Exception as e:
                 browser_error = e
             finally:
                 browser.close()
 
-        try:
-            return self._scrape_via_http(url)
-        except Exception as http_error:
-            raise ScraperError(
-                f"Myntra scrape failed via browser ({browser_error}) "
-                f"and HTTP fallback ({http_error})"
-            )
+        raise ScraperError(
+            f"Myntra scrape failed via requests ({requests_error}) "
+            f"and browser fallback ({browser_error})"
+        )
 
     def _safe_goto(self, page, url: str) -> None:
         attempts = [
@@ -85,19 +89,19 @@ class MyntraScraper(BaseScraper):
                 last_error = e
         raise ScraperError(f"Page navigation failed: {last_error}")
 
-    def _scrape_via_http(self, url: str) -> ScrapedProduct:
+    def _scrape_via_requests(self, url: str) -> ScrapedProduct:
         headers = {
             "User-Agent": _USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-IN,en;q=0.9",
         }
-        r = httpx.get(url, headers=headers, timeout=20, follow_redirects=True)
+        r = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
         r.raise_for_status()
         html = r.text
 
         price_raw = self._extract_price_from_html(html)
         if not price_raw:
-            raise ScraperError("Price not found in Myntra HTTP response")
+            raise ScraperError("Price not found in Myntra requests response")
         price = self._parse_price(price_raw)
 
         ld = self._extract_ld_json(html)
@@ -123,6 +127,7 @@ class MyntraScraper(BaseScraper):
             in_stock=in_stock,
             image_url=image_url,
             raw_price_text=price_raw,
+            scrape_method="requests",
         )
 
     def _extract_name(self, page) -> str:

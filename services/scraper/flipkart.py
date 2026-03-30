@@ -1,6 +1,7 @@
 import json
 import re
 
+import requests
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper, ScrapedProduct, ScraperError
@@ -11,17 +12,88 @@ _USER_AGENT = (
     "Chrome/120.0.0.0 Safari/537.36"
 )
 
+_REQUESTS_HEADERS = {
+    "User-Agent": _USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-IN,en;q=0.9",
+}
+
 
 class FlipkartScraper(BaseScraper):
     """
-    Scrapes Flipkart product pages using Playwright (sync API).
+    Scrapes Flipkart product pages.
 
-    Handles the login popup that Flipkart shows on first load.
+    Strategy:
+    1. Try requests library with browser user-agent, parsing JSON-LD from HTML.
+    2. Fall back to Playwright if requests fails or yields incomplete data.
+
     Price is always INR on Flipkart.
     Stock: absence of the "NOTIFY ME" button indicates the item is in stock.
     """
 
     def scrape(self, url: str) -> ScrapedProduct:
+        try:
+            return self._scrape_via_requests(url)
+        except Exception:
+            pass
+        return self._scrape_via_browser(url)
+
+    def _scrape_via_requests(self, url: str) -> ScrapedProduct:
+        r = requests.get(
+            url, headers=_REQUESTS_HEADERS, timeout=20, allow_redirects=True
+        )
+        r.raise_for_status()
+        html = r.text
+
+        jsonld = self._extract_jsonld_from_html(html)
+        name: str | None = None
+        price_raw: str | None = None
+        price: float | None = None
+        image_url: str | None = None
+        in_stock: bool | None = None
+
+        if jsonld:
+            if jsonld.get("name"):
+                name = str(jsonld["name"]).strip()
+
+            offers = jsonld.get("offers", {}) if isinstance(jsonld, dict) else {}
+            offer_price = offers.get("price")
+            if offer_price is not None:
+                price_raw = str(offer_price)
+                price = self._parse_price(price_raw)
+
+            avail = str(offers.get("availability", "")).lower()
+            if "outofstock" in avail:
+                in_stock = False
+            elif "instock" in avail:
+                in_stock = True
+
+            images = jsonld.get("image")
+            if isinstance(images, list) and images:
+                image_url = images[0]
+            elif isinstance(images, str):
+                image_url = images
+
+        if not name:
+            raise ScraperError("Product title not found in Flipkart requests response")
+
+        if price is None:
+            raise ScraperError("Price not found in Flipkart requests response")
+
+        if in_stock is None:
+            in_stock = "notify me" not in html.lower()
+
+        return ScrapedProduct(
+            name=name,
+            price=price,
+            currency="INR",
+            in_stock=in_stock,
+            image_url=image_url,
+            raw_price_text=price_raw,
+            scrape_method="requests",
+        )
+
+    def _scrape_via_browser(self, url: str) -> ScrapedProduct:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=self.headless)
             ctx = browser.new_context(user_agent=_USER_AGENT)
@@ -103,9 +175,29 @@ class FlipkartScraper(BaseScraper):
                     in_stock=in_stock,
                     image_url=image_url,
                     raw_price_text=price_raw,
+                    scrape_method="browser",
                 )
             finally:
                 browser.close()
+
+    def _extract_jsonld_from_html(self, html: str) -> dict | None:
+        """Extract Product JSON-LD from raw HTML text."""
+        for m in re.finditer(
+            r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+            html,
+            re.IGNORECASE | re.DOTALL,
+        ):
+            text = m.group(1).strip()
+            if not text:
+                continue
+            try:
+                payload = json.loads(text)
+            except Exception:
+                payload = self._try_parse_partial_jsonld(text)
+            product = self._find_product_node(payload)
+            if product:
+                return product
+        return None
 
     def _extract_jsonld_product(self, page) -> dict | None:
         scripts = page.query_selector_all("script[type='application/ld+json']")

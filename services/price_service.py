@@ -96,6 +96,8 @@ def check_product_link_price(
     link.updated_at = now
     if data.image_url:
         link.image_url = data.image_url
+    if data.scrape_method:
+        link.last_scrape_method = data.scrape_method
     session.add(link)
 
     # Replace queue-time placeholder with first successful scraped title.

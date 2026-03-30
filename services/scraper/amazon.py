@@ -1,3 +1,6 @@
+import re
+
+import requests
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper, ScrapedProduct, ScraperError
@@ -10,10 +13,23 @@ _USER_AGENT = (
     "Chrome/120.0.0.0 Safari/537.36"
 )
 
+_REQUESTS_HEADERS = {
+    "User-Agent": _USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "Accept-Language": "en-IN,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
+
 
 class AmazonScraper(BaseScraper):
     """
-    Scrapes Amazon product pages using Playwright (sync API).
+    Scrapes Amazon product pages.
+
+    Strategy:
+    1. Try requests library with browser user-agent (fast, no browser overhead).
+    2. Fall back to Playwright if requests fails (CAPTCHA, JS-rendered content, etc.).
 
     Price extraction order:
       1. .a-price .a-offscreen  — full formatted price string (most reliable)
@@ -24,6 +40,81 @@ class AmazonScraper(BaseScraper):
     """
 
     def scrape(self, url: str) -> ScrapedProduct:
+        try:
+            return self._scrape_via_requests(url)
+        except Exception:
+            pass
+        return self._scrape_via_browser(url)
+
+    def _scrape_via_requests(self, url: str) -> ScrapedProduct:
+        r = requests.get(
+            url, headers=_REQUESTS_HEADERS, timeout=20, allow_redirects=True
+        )
+        r.raise_for_status()
+        html = r.text
+
+        if "Type the characters" in html or "Enter the characters" in html:
+            raise ScraperError("Amazon CAPTCHA encountered in requests response")
+
+        # Title
+        title_match = re.search(
+            r'id=["\']productTitle["\'][^>]*>\s*(.*?)\s*</span>', html, re.DOTALL
+        )
+        name = title_match.group(1).strip() if title_match else None
+        if not name:
+            og_match = re.search(
+                r'<meta[^>]+property=["\']og:title["\'][^>]+content=["\']([^"\']+)["\']',
+                html,
+                re.IGNORECASE,
+            )
+            name = og_match.group(1).strip() if og_match else None
+        if not name:
+            raise ScraperError("Product title not found in Amazon requests response")
+
+        # Price: prefer .a-offscreen
+        price_raw: str | None = None
+        offscreen_match = re.search(r'class="a-offscreen">(.*?)</span>', html)
+        if offscreen_match:
+            price_raw = offscreen_match.group(1).strip()
+        if not price_raw:
+            raise ScraperError("Price element not found in Amazon requests response")
+        price = self._parse_price(price_raw)
+
+        # Stock
+        in_stock = True
+        avail_match = re.search(
+            r'id=["\']availability["\'][^>]*>.*?<span[^>]*>\s*(.*?)\s*</span>',
+            html,
+            re.DOTALL,
+        )
+        if avail_match:
+            in_stock = "in stock" in avail_match.group(1).lower()
+
+        # Image
+        image_url: str | None = None
+        img_match = re.search(
+            r'id=["\']landingImage["\'][^>]+data-old-hires=["\']([^"\']+)["\']', html
+        )
+        if not img_match:
+            img_match = re.search(
+                r'id=["\']landingImage["\'][^>]+src=["\']([^"\']+)["\']', html
+            )
+        if img_match:
+            image_url = img_match.group(1)
+
+        currency = "INR" if "amazon.in" in url else "USD"
+
+        return ScrapedProduct(
+            name=name,
+            price=price,
+            currency=currency,
+            in_stock=in_stock,
+            image_url=image_url,
+            raw_price_text=price_raw,
+            scrape_method="requests",
+        )
+
+    def _scrape_via_browser(self, url: str) -> ScrapedProduct:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=self.headless)
             ctx = browser.new_context(
@@ -53,7 +144,6 @@ class AmazonScraper(BaseScraper):
                     title_el.inner_text().strip() if title_el else page.title().strip()
                 )
 
-                # Price: prefer the full offscreen-formatted value
                 price_raw: str | None = None
                 offscreen = page.query_selector(".a-price .a-offscreen")
                 if offscreen:
@@ -71,13 +161,11 @@ class AmazonScraper(BaseScraper):
 
                 price = self._parse_price(price_raw)
 
-                # Stock status
                 in_stock = True
                 avail_el = page.query_selector("#availability span")
                 if avail_el:
                     in_stock = "in stock" in avail_el.inner_text().strip().lower()
 
-                # Product image
                 image_url: str | None = None
                 img_el = page.query_selector("#landingImage")
                 if img_el:
@@ -94,6 +182,7 @@ class AmazonScraper(BaseScraper):
                     in_stock=in_stock,
                     image_url=image_url,
                     raw_price_text=price_raw,
+                    scrape_method="browser",
                 )
             finally:
                 browser.close()

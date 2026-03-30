@@ -21,6 +21,7 @@ class ProductLink(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_checked_at: Optional[datetime] = Field(default=None)
+    last_scrape_method: Optional[str] = Field(default=None, max_length=20)
 
     product: Optional["Product"] = Relationship(back_populates="links")
 

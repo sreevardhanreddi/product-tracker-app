@@ -12,6 +12,7 @@ class ScrapedProduct:
     in_stock: bool = True
     image_url: Optional[str] = None
     raw_price_text: Optional[str] = None
+    scrape_method: Optional[str] = None  # "requests" or "browser"
 
 
 class ScraperError(Exception):
