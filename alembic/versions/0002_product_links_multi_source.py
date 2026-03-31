@@ -56,8 +56,7 @@ def upgrade() -> None:
     )
 
     # Backfill one link per existing product from legacy single-url columns.
-    op.execute(
-        """
+    op.execute("""
         INSERT INTO product_links (
             product_id,
             url,
@@ -84,18 +83,15 @@ def upgrade() -> None:
             p.updated_at,
             p.last_checked_at
         FROM products p
-        """
-    )
+        """)
 
-    op.execute(
-        """
+    op.execute("""
         UPDATE price_history ph
         SET product_link_id = pl.id
         FROM product_links pl
         WHERE ph.product_id = pl.product_id
           AND ph.product_link_id IS NULL
-        """
-    )
+        """)
 
 
 def downgrade() -> None:

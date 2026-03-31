@@ -57,10 +57,11 @@ def detect_platform(url: str) -> Platform:
     )
 
 
-def get_scraper(url: str):
+def get_scraper(url: str, headless: bool | None = None):
     """
     Factory: detect the platform for a URL and return (scraper_instance, platform_str).
     Imports are deferred to avoid heavy playwright import at module load time.
+    Pass headless=False to override the .env setting (e.g. for debug runs).
     """
     from config import settings
 
@@ -73,7 +74,7 @@ def get_scraper(url: str):
 
     platform = detect_platform(url)
     kwargs = {
-        "headless": settings.PLAYWRIGHT_HEADLESS,
+        "headless": settings.PLAYWRIGHT_HEADLESS if headless is None else headless,
         "timeout_ms": settings.PLAYWRIGHT_TIMEOUT_MS,
     }
 

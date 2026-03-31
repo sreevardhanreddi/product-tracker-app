@@ -467,7 +467,7 @@
           const err = await res.json();
           console.error("Scrape failed:", err);
           btn.textContent = "❌";
-          setTimeout(() => { btn.textContent = originalText; btn.disabled = false; }, 2000);
+          setTimeout(() => { btn.innerHTML = originalHTML; btn.disabled = false; }, 2000);
           return;
         }
         const product = await res.json();

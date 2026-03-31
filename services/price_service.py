@@ -53,10 +53,11 @@ def refresh_product_cache(product: Product, session: Session) -> None:
 
 
 def check_product_link_price(
-    product_link_id: int, session: Session
+    product_link_id: int, session: Session, headless: bool | None = None
 ) -> PriceHistory | None:
     """
     Run one scrape cycle for one product link and update product-level cache.
+    Pass headless=False to force a visible browser window regardless of .env setting.
     """
     link = session.get(ProductLink, product_link_id)
     if not link or not link.is_active:
@@ -71,7 +72,7 @@ def check_product_link_price(
         return None
 
     try:
-        scraper, _ = get_scraper(link.url)
+        scraper, _ = get_scraper(link.url, headless=headless)
         data = scraper.scrape(link.url)
     except Exception as e:
         logger.error(f"Scrape failed for link {product_link_id} ({link.url}): {e}")

@@ -267,7 +267,7 @@ def manual_check_link(
     if not link or link.product_id != product_id:
         raise HTTPException(status_code=404, detail="Product link not found")
 
-    history = check_product_link_price(link_id, session)
+    history = check_product_link_price(link_id, session, headless=False)
     if history is None:
         raise HTTPException(status_code=502, detail="Scrape failed — check server logs")
 
