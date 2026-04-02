@@ -77,24 +77,30 @@
 
   <script>
     let pollTimer = null;
+    const priceFormatters = new Map();
 
-    document.addEventListener("DOMContentLoaded", () => {
-      loadProducts();
-    });
+    loadProducts();
 
     function formatPrice(currency, price) {
       if (price == null) return "—";
       const value = Number(price);
       if (!Number.isFinite(value)) return "—";
       try {
-        return new Intl.NumberFormat(
-          currency === "INR" ? "en-IN" : undefined,
-          {
-            style: "currency",
-            currency: currency || "USD",
-            maximumFractionDigits: 2,
-          }
-        ).format(value);
+        const key = currency || "USD";
+        if (!priceFormatters.has(key)) {
+          priceFormatters.set(
+            key,
+            new Intl.NumberFormat(
+              currency === "INR" ? "en-IN" : undefined,
+              {
+                style: "currency",
+                currency: key,
+                maximumFractionDigits: 2,
+              }
+            )
+          );
+        }
+        return priceFormatters.get(key).format(value);
       } catch {
         return `${currency || ""} ${value.toFixed(2)}`.trim();
       }
@@ -181,6 +187,8 @@
             alt="${escapeHtml(product.name)}"
             class="h-full w-full object-cover"
             loading="lazy"
+            decoding="async"
+            referrerpolicy="no-referrer"
           />
         `;
       }
@@ -204,16 +212,16 @@
     }
 
     async function loadProducts() {
-      const res = await fetch("/api/products");
-      const products = await res.json();
       const grid = document.getElementById("product-grid");
       const emptyState = document.getElementById("empty-state");
       const count = document.getElementById("product-count");
+      const res = await fetch("/api/products");
+      const products = await res.json();
 
-      grid.innerHTML = "";
       count.textContent = `${products.length} tracked`;
 
       if (!products.length) {
+        grid.innerHTML = "";
         emptyState.classList.remove("hidden");
         stopPoll();
         return;
@@ -221,12 +229,13 @@
 
       emptyState.classList.add("hidden");
 
-      products.forEach((product) => {
+      const cardsMarkup = products.map((product) => {
         const priceRange = getPriceRange(product);
-        const card = document.createElement("a");
-        card.href = `/products/${product.id}`;
-        card.className = "group overflow-hidden rounded-[1.3rem] border border-stone-800 bg-stone-950 transition hover:-translate-y-0.5 hover:border-stone-700 hover:shadow-xl hover:shadow-black/20";
-        card.innerHTML = `
+        return `
+        <a
+          href="/products/${product.id}"
+          class="group overflow-hidden rounded-[1.3rem] border border-stone-800 bg-stone-950 transition hover:-translate-y-0.5 hover:border-stone-700 hover:shadow-xl hover:shadow-black/20"
+        >
           <div class="aspect-[7/5] overflow-hidden border-b border-stone-800 bg-stone-900">
             ${renderProductImage(product)}
           </div>
@@ -257,9 +266,11 @@
             ${product.current_price == null ? `<div class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending scrape</div>` : ""}
             ${product.target_price != null ? `<p class="text-xs text-stone-500">Target: ${formatPrice(product.currency, product.target_price)}</p>` : ""}
           </div>
+        </a>
         `;
-        grid.appendChild(card);
-      });
+      }).join("");
+
+      grid.innerHTML = cardsMarkup;
 
       const hasPending = products.some(
         (product) => product.current_price == null || (product.name || "").toLowerCase().startsWith("pending -")
