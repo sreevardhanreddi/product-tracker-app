@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     # Price check schedule
     PRICE_CHECK_INTERVAL_MINUTES: int = 60
+    PRICE_CHANGE_NOTIFY_MIN_PERCENT: float = 1.0
 
     # Alerts (optional — falls back to logging if unset)
     GMAIL_USER: Optional[str] = None

@@ -112,6 +112,7 @@ All configuration is done through environment variables in `.env`. See `.env.exa
 | `DATABASE_URL`                            | PostgreSQL connection string                             |
 | `REDIS_URL`                               | Redis connection string                                  |
 | `PRICE_CHECK_INTERVAL_MINUTES`            | How often to re-check prices (default `60`)              |
+| `PRICE_CHANGE_NOTIFY_MIN_PERCENT`         | Minimum percentage change required before sending a price-change alert (default `1.0`) |
 | `GMAIL_USER` / `GMAIL_PASSWORD`           | Gmail credentials for email alerts                       |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram bot for push alerts                             |
 | `PLAYWRIGHT_HEADLESS`                     | `true` for headless scraping, `false` to see the browser |
