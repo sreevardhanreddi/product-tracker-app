@@ -1,5 +1,13 @@
+x-default-logging: &default-logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   postgres:
+    <<: *default-logging
     image: postgres:16-alpine
     user: "1000:1000"
     volumes:
@@ -14,6 +22,7 @@ services:
       - .env
 
   redis:
+    <<: *default-logging
     image: redis:7-alpine
     restart: unless-stopped
     healthcheck:
@@ -27,6 +36,7 @@ services:
       - .env
 
   migrate:
+    <<: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.prod
@@ -37,8 +47,11 @@ services:
         condition: service_healthy
     command: alembic upgrade head
     restart: "no"
+    cpus: 0.5
+    mem_limit: 512m
 
   app:
+    <<: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.prod
@@ -52,8 +65,11 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 512m
 
   celery_worker:
+    <<: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.prod
@@ -66,8 +82,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     command: celery -A tasks.celery_app.celery_app worker --loglevel=warning --concurrency=2
+    cpus: 1.0
+    mem_limit: 1g
 
   celery_beat:
+    <<: *default-logging
     build:
       context: .
       dockerfile: Dockerfile.prod
@@ -80,4 +99,5 @@ services:
         condition: service_healthy
     restart: unless-stopped
     command: celery -A tasks.celery_app.celery_app beat --loglevel=warning
-
+    cpus: 0.25
+    mem_limit: 256m

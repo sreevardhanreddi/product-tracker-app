@@ -12,7 +12,7 @@ Track product prices across multiple online stores from a single dashboard. Add 
 - **Automatic price checks** — Celery Beat runs on a configurable schedule
 - **Price history charts** — visual price trends per product and source
 - **Multiple links per product** — compare the same item across stores
-- **Alerts** — Gmail and Telegram notifications when the price drops below a target
+- **Alerts** — Gmail and Telegram notifications when the price drops below a target, plus Telegram alerts whenever a checked price changes from its last recorded value
 - **REST API** — full CRUD under `/api` with Swagger at `/docs`
 
 ## Tech Stack
@@ -89,10 +89,19 @@ Both Compose files spin up the same set of services:
 | ----------------- | ---------------------------------- |
 | **postgres**      | PostgreSQL 16 database             |
 | **redis**         | Redis 7 broker for Celery          |
+| **adminer**       | Browser-based PostgreSQL explorer  |
 | **migrate**       | Runs Alembic migrations then exits |
 | **app**           | FastAPI web server                 |
 | **celery_worker** | Processes price-check tasks        |
 | **celery_beat**   | Schedules periodic price checks    |
+
+In development, Adminer is available at `http://localhost:8080` for inspecting the Postgres database. The server defaults to `postgres`. Use:
+
+- System: `PostgreSQL`
+- Server: `postgres`
+- Username: value of `POSTGRES_USER` from `.env`
+- Password: value of `POSTGRES_PASSWORD` from `.env`
+- Database: value of `POSTGRES_DB` from `.env`
 
 ## Configuration
 

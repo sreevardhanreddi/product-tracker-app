@@ -24,6 +24,16 @@ services:
     env_file:
       - .env
 
+  adminer:
+    image: adminer:5
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   migrate:
     build:
       context: .
@@ -37,6 +47,8 @@ services:
         condition: service_healthy
     command: alembic upgrade head
     restart: "no"
+    cpus: 0.5
+    mem_limit: 512m
 
   app:
     build:
@@ -55,6 +67,8 @@ services:
       redis:
         condition: service_healthy
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    cpus: 0.5
+    mem_limit: 512m
 
   celery_worker:
     build:
@@ -71,6 +85,8 @@ services:
       redis:
         condition: service_healthy
     command: celery -A tasks.celery_app.celery_app worker --loglevel=info --concurrency=2
+    cpus: 1.0
+    mem_limit: 1g
 
   celery_beat:
     build:
@@ -87,4 +103,5 @@ services:
       redis:
         condition: service_healthy
     command: celery -A tasks.celery_app.celery_app beat --loglevel=info
-
+    cpus: 0.25
+    mem_limit: 256m

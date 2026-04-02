@@ -4,7 +4,13 @@ from datetime import datetime
 from sqlmodel import Session, select
 
 from models import Alert, PriceHistory, Product, ProductLink
-from services.alert_service import dispatch_alert
+from services.alert_service import (
+    dispatch_alert,
+    escape_telegram_link,
+    escape_telegram_markdown,
+    get_telegram_status_emoji,
+    send_message,
+)
 from services.scraper.detector import get_scraper
 
 logger = logging.getLogger(__name__)
@@ -79,6 +85,7 @@ def check_product_link_price(
         return None
 
     now = datetime.utcnow()
+    previous_price = link.current_price
 
     history = PriceHistory(
         product_id=product.id,
@@ -108,6 +115,53 @@ def check_product_link_price(
         product.name = data.name.strip()
 
     refresh_product_cache(product, session)
+
+    if previous_price is not None and previous_price != data.price:
+        direction = "decreased" if data.price < previous_price else "increased"
+        status_key = (
+            "price_decreased" if data.price < previous_price else "price_increased"
+        )
+        indicator = get_telegram_status_emoji(status_key)
+        delta_amount = abs(data.price - previous_price)
+        delta_percent = (
+            (delta_amount / previous_price) * 100 if previous_price > 0 else 0.0
+        )
+        message = (
+            f"{indicator} Price {direction} for '{product.name}'\n"
+            f"Change: {data.currency} {delta_amount:.2f} ({delta_percent:.2f}%)\n"
+            f"Previous: {data.currency} {previous_price:.2f}\n"
+            f"Current: {data.currency} {data.price:.2f}\n"
+            f"Link: {link.url}"
+        )
+        telegram_message = (
+            f"{indicator} *Price {escape_telegram_markdown(direction)}*\n"
+            f"*Product:* {escape_telegram_markdown(product.name)}\n"
+            f"*Change:* {escape_telegram_markdown(f'{data.currency} {delta_amount:.2f}')} "
+            f"\\({escape_telegram_markdown(f'{delta_percent:.2f}%')}\\)\n"
+            f"*Previous:* {escape_telegram_markdown(f'{data.currency} {previous_price:.2f}')}\n"
+            f"*Current:* {escape_telegram_markdown(f'{data.currency} {data.price:.2f}')}\n"
+            f"*Link:* [{escape_telegram_markdown(link.url)}]({escape_telegram_link(link.url)})"
+        )
+        try:
+            channel = send_message(
+                message=message,
+                subject=f"Price Change: {product.name}",
+                fallback_log_prefix="[PRICE CHANGE]",
+                telegram_message=telegram_message,
+            )
+            logger.info(
+                "Price-change alert sent | link_id=%d channel=%s old=%.2f new=%.2f",
+                link.id,
+                channel,
+                previous_price,
+                data.price,
+            )
+        except Exception as exc:
+            logger.error(
+                "Price-change alert failed | link_id=%d error=%s",
+                link.id,
+                exc,
+            )
 
     if (
         product.target_price is not None
