@@ -9,7 +9,6 @@ services:
   postgres:
     <<: *default-logging
     image: postgres:16-alpine
-    user: "1000:1000"
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
