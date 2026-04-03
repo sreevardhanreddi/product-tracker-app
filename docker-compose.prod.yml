@@ -56,7 +56,7 @@ services:
       context: .
       dockerfile: Dockerfile.prod
     ports:
-      - "8000:8000"
+      - "8015:8000"
     env_file:
       - .env
     depends_on:
@@ -101,3 +101,16 @@ services:
     command: celery -A tasks.celery_app.celery_app beat --loglevel=warning
     cpus: 0.25
     mem_limit: 256m
+
+  # Optional: Adminer for database management
+  adminer:
+    <<: *default-logging
+    image: adminer:5
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    ports:
+      - "8016:8080"
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
