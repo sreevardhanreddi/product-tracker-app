@@ -167,6 +167,20 @@ class MyntraScraper(BaseScraper):
 
     @staticmethod
     def _extract_price_from_html(text: str) -> str | None:
+        # Authoritative: embedded Redux-style state (always present on SSR PDP).
+        myx = MyntraScraper._extract_price_from_myx(text)
+        if myx:
+            return myx
+
+        # Meta description often has "Rs. 3999" even when ld+json is invalid.
+        meta_rs = re.search(
+            r'<meta[^>]+name=["\']description["\'][^>]+content=["\'][^"\']*Rs\.\s*([\d,]+)',
+            text,
+            re.IGNORECASE,
+        )
+        if meta_rs:
+            return meta_rs.group(1).replace(",", "")
+
         # Prefer explicit selling price from verbiage block:
         # <b>Selling Price</b><span class="pdp-mrp-verbiage-amt">Rs. 1799</span>
         selling_match = re.search(
@@ -213,15 +227,40 @@ class MyntraScraper(BaseScraper):
                 if price is not None:
                     return str(price).replace(",", "")
 
-        # Generic fallback: first currency+number in the fragment.
-        generic_match = re.search(
-            r"(?:Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)",
+        # ld+json Product block may be invalid JSON (e.g. unescaped newlines in fields).
+        # Still extract schema offers.price when present.
+        product_price = re.search(
+            r'"@type"\s*:\s*"Product"[\s\S]{0,12000}?"offers"\s*:\s*\{[^}]{0,400}?"price"\s*:\s*"([\d,]+)"',
             text,
             re.IGNORECASE,
         )
-        if generic_match:
-            return generic_match.group(1)
+        if product_price:
+            return product_price.group(1).replace(",", "")
 
+        # Last resort: first ₹/Rs near PDP price markup only (avoid shipping/fees elsewhere).
+        pdp_ctx = re.search(
+            r'class=["\'][^"\']*pdp-(?:price|discount)[^"\']*["\'][\s\S]{0,400}?(?:Rs\.?|₹)\s*([\d,]+(?:\.\d+)?)',
+            text,
+            re.IGNORECASE,
+        )
+        if pdp_ctx:
+            return pdp_ctx.group(1)
+
+        return None
+
+    @staticmethod
+    def _extract_price_from_myx(text: str) -> str | None:
+        """Parse selling price from window.__myx.pdpData (discounted / mrp)."""
+        idx = text.find('"pdpData"')
+        if idx == -1:
+            return None
+        chunk = text[idx : idx + 900000]
+        disc = re.search(r'"discounted"\s*:\s*(\d+)', chunk)
+        if disc:
+            return disc.group(1)
+        mrp = re.search(r'"mrp"\s*:\s*(\d+)', chunk)
+        if mrp:
+            return mrp.group(1)
         return None
 
     @staticmethod
