@@ -73,6 +73,9 @@
               <button id="check-now-btn"
                 class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-stone-700"
                 onclick="manualCheck(event)">Check Now</button>
+              <button id="toggle-product-alerts-btn"
+                class="inline-flex items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:border-stone-700 disabled:bg-stone-800 disabled:text-stone-500"
+                onclick="toggleProductAlerts(event)"></button>
               <a id="open-product-link"
                 class="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs font-semibold text-sky-300 transition hover:border-sky-400 hover:bg-sky-500/15 hover:text-sky-200"
                 href="#" target="_blank" rel="noopener noreferrer">
@@ -292,8 +295,20 @@
         : "Awaiting first scrape";
       document.getElementById("open-product-link").href = product.url;
       document.getElementById("product-source-badges").innerHTML = renderSiteBadges(product);
+      renderProductAlertsButton(product);
       renderProductImage(product);
       renderChartMeta(product);
+    }
+
+    function renderProductAlertsButton(product) {
+      const btn = document.getElementById("toggle-product-alerts-btn");
+      if (!btn) return;
+
+      const enabled = Boolean(product.alerts_enabled);
+      btn.textContent = enabled ? "Deactivate Alerts" : "Activate Alerts";
+      btn.className = enabled
+        ? "inline-flex items-center justify-center rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-200 transition hover:border-amber-400 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:border-stone-700 disabled:bg-stone-800 disabled:text-stone-500"
+        : "inline-flex items-center justify-center rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:border-stone-700 disabled:bg-stone-800 disabled:text-stone-500";
     }
 
     function renderChartMeta(product) {
@@ -390,6 +405,14 @@
           ${link.current_price != null
           ? `<span class="whitespace-nowrap font-semibold text-stone-100">${formatPrice(link.currency, link.current_price)}</span>`
           : `<span class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending</span>`}
+          <button
+            class="${link.alerts_enabled
+          ? "shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 transition hover:border-amber-400 hover:bg-amber-500/15"
+          : "shrink-0 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200 transition hover:border-emerald-400 hover:bg-emerald-500/15"}"
+            title="${link.alerts_enabled ? "Deactivate link alerts" : "Activate link alerts"}"
+            onclick="toggleLinkAlerts(event, ${product.id}, ${link.id}, ${link.alerts_enabled ? "true" : "false"})">
+            ${link.alerts_enabled ? "Deactivate alerts" : "Activate alerts"}
+          </button>
           <button class="shrink-0 self-end leading-none text-emerald-400 transition hover:text-emerald-300 disabled:opacity-40 sm:self-auto" title="Debug: track price now" onclick="debugLink(event, ${product.id}, ${link.id})"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></button>
           <button class="shrink-0 self-end text-base leading-none text-rose-400 transition hover:text-rose-300 sm:self-auto" title="Remove link" onclick="removeLink(event, ${product.id}, ${link.id})">✕</button>
         </div>
@@ -448,6 +471,47 @@
         renderProduct(selectedProduct);
         renderProductLinks(selectedProduct);
         await loadChart(selectedProduct.id);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function toggleProductAlerts(event) {
+      if (!selectedProduct) return;
+      const btn = event.currentTarget;
+      const enableAlerts = !selectedProduct.alerts_enabled;
+      btn.disabled = true;
+      try {
+        const action = enableAlerts ? "activate" : "deactivate";
+        const res = await fetch(`/api/products/${selectedProduct.id}/alerts/${action}`, { method: "POST" });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Error: " + (err.detail || JSON.stringify(err)));
+          return;
+        }
+        selectedProduct = await res.json();
+        renderProduct(selectedProduct);
+        renderProductLinks(selectedProduct);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function toggleLinkAlerts(event, currentProductId, linkId, alertsEnabled) {
+      event.stopPropagation();
+      const btn = event.currentTarget;
+      btn.disabled = true;
+      try {
+        const action = alertsEnabled ? "deactivate" : "activate";
+        const res = await fetch(`/api/products/${currentProductId}/links/${linkId}/alerts/${action}`, { method: "POST" });
+        if (!res.ok) {
+          const err = await res.json();
+          alert("Error: " + (err.detail || JSON.stringify(err)));
+          return;
+        }
+        selectedProduct = await res.json();
+        renderProduct(selectedProduct);
+        renderProductLinks(selectedProduct);
       } finally {
         btn.disabled = false;
       }

@@ -59,6 +59,14 @@ def refresh_product_cache(product: Product, session: Session) -> None:
     session.add(product)
 
 
+def alerts_enabled_for(product: Product, link: ProductLink | None = None) -> bool:
+    if not product.alerts_enabled:
+        return False
+    if link is not None and not link.alerts_enabled:
+        return False
+    return True
+
+
 def check_product_link_price(
     product_link_id: int, session: Session, headless: bool | None = None
 ) -> PriceHistory | None:
@@ -127,7 +135,12 @@ def check_product_link_price(
         delta_percent = (
             (delta_amount / previous_price) * 100 if previous_price > 0 else 0.0
         )
-        if delta_percent < settings.PRICE_CHANGE_NOTIFY_MIN_PERCENT:
+        if not alerts_enabled_for(product, link):
+            logger.info(
+                "Price-change alert skipped | link_id=%d alerts disabled",
+                link.id,
+            )
+        elif delta_percent < settings.PRICE_CHANGE_NOTIFY_MIN_PERCENT:
             logger.info(
                 "Price-change alert skipped | link_id=%d percent=%.2f threshold=%.2f",
                 link.id,
@@ -173,7 +186,8 @@ def check_product_link_price(
                 )
 
     if (
-        product.target_price is not None
+        alerts_enabled_for(product, link)
+        and product.target_price is not None
         and data.price <= product.target_price
         and data.in_stock
     ):

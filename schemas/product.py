@@ -12,6 +12,7 @@ class ProductLinkCreate(BaseModel):
 class ProductLinkUpdate(BaseModel):
     check_interval_minutes: Optional[int] = None
     is_active: Optional[bool] = None
+    alerts_enabled: Optional[bool] = None
 
 
 class ProductLinkRead(BaseModel):
@@ -24,6 +25,7 @@ class ProductLinkRead(BaseModel):
     currency: str
     image_url: Optional[str]
     is_active: bool
+    alerts_enabled: bool
     check_interval_minutes: int
     created_at: datetime
     updated_at: datetime
@@ -59,6 +61,7 @@ class ProductUpdate(BaseModel):
     target_price: Optional[float] = None
     check_interval_minutes: Optional[int] = None
     is_active: Optional[bool] = None
+    alerts_enabled: Optional[bool] = None
     links: Optional[List[ProductLinkUpdate]] = None
 
 
@@ -73,6 +76,7 @@ class ProductRead(BaseModel):
     currency: str
     image_url: Optional[str]
     is_active: bool
+    alerts_enabled: bool
     check_interval_minutes: int
     created_at: datetime
     updated_at: datetime

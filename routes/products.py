@@ -66,6 +66,7 @@ def create_product(payload: ProductCreate, session: Session = Depends(get_sessio
         current_price=None,
         currency="INR",
         image_url=None,
+        alerts_enabled=True,
         check_interval_minutes=payload.check_interval_minutes,
         created_at=now,
         updated_at=now,
@@ -83,6 +84,7 @@ def create_product(payload: ProductCreate, session: Session = Depends(get_sessio
             current_price=None,
             currency="INR",
             image_url=None,
+            alerts_enabled=True,
             check_interval_minutes=row["interval"],
             created_at=now,
             updated_at=now,
@@ -201,6 +203,7 @@ def add_product_link(
         current_price=None,
         currency="INR",
         image_url=None,
+        alerts_enabled=True,
         check_interval_minutes=payload.check_interval_minutes
         or product.check_interval_minutes,
         created_at=now,
@@ -308,4 +311,82 @@ def manual_check(product_id: int, session: Session = Depends(get_session)):
             status_code=502, detail="Unable to queue scrape — check worker logs"
         )
 
+    return product
+
+
+@router.post("/products/{product_id}/alerts/deactivate", response_model=ProductRead)
+def deactivate_product_alerts(product_id: int, session: Session = Depends(get_session)):
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product.alerts_enabled = False
+    product.updated_at = datetime.utcnow()
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    return product
+
+
+@router.post("/products/{product_id}/alerts/activate", response_model=ProductRead)
+def activate_product_alerts(product_id: int, session: Session = Depends(get_session)):
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    product.alerts_enabled = True
+    product.updated_at = datetime.utcnow()
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    return product
+
+
+@router.post(
+    "/products/{product_id}/links/{link_id}/alerts/deactivate",
+    response_model=ProductRead,
+)
+def deactivate_link_alerts(
+    product_id: int,
+    link_id: int,
+    session: Session = Depends(get_session),
+):
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    link = session.get(ProductLink, link_id)
+    if not link or link.product_id != product_id:
+        raise HTTPException(status_code=404, detail="Product link not found")
+
+    link.alerts_enabled = False
+    link.updated_at = datetime.utcnow()
+    session.add(link)
+    session.commit()
+    session.refresh(product)
+    return product
+
+
+@router.post(
+    "/products/{product_id}/links/{link_id}/alerts/activate",
+    response_model=ProductRead,
+)
+def activate_link_alerts(
+    product_id: int,
+    link_id: int,
+    session: Session = Depends(get_session),
+):
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    link = session.get(ProductLink, link_id)
+    if not link or link.product_id != product_id:
+        raise HTTPException(status_code=404, detail="Product link not found")
+
+    link.alerts_enabled = True
+    link.updated_at = datetime.utcnow()
+    session.add(link)
+    session.commit()
+    session.refresh(product)
     return product

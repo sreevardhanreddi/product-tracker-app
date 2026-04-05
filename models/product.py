@@ -19,6 +19,7 @@ class Product(SQLModel, table=True):
     currency: str = Field(default="INR", max_length=10)
     image_url: Optional[str] = Field(default=None, max_length=2000)
     is_active: bool = Field(default=True)
+    alerts_enabled: bool = Field(default=True)
     check_interval_minutes: int = Field(default=60)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
