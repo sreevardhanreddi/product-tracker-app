@@ -314,6 +314,30 @@ def manual_check(product_id: int, session: Session = Depends(get_session)):
     return product
 
 
+@router.post("/products/check-all", status_code=202)
+def check_all_products(session: Session = Depends(get_session)):
+    """Queue an immediate Celery price check for all active product links."""
+    link_ids = session.exec(
+        select(ProductLink.id).where(ProductLink.is_active == True)  # noqa: E712
+    ).all()
+    if not link_ids:
+        raise HTTPException(status_code=404, detail="No active product links found")
+
+    from tasks.price_check import check_single_product_link
+
+    queued = 0
+    for link_id in link_ids:
+        try:
+            check_single_product_link.delay(link_id)
+            queued += 1
+        except Exception:
+            logger.exception(
+                "Failed to enqueue price check for product_link_id=%s", link_id
+            )
+
+    return {"queued": queued}
+
+
 @router.post("/products/{product_id}/alerts/deactivate", response_model=ProductRead)
 def deactivate_product_alerts(product_id: int, session: Session = Depends(get_session)):
     product = session.get(Product, product_id)
