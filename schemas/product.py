@@ -84,3 +84,10 @@ class ProductRead(BaseModel):
     links: List[ProductLinkRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
+
+
+class ProductListResponse(BaseModel):
+    items: List[ProductRead]
+    total: int
+    page: int
+    page_size: int

@@ -3,12 +3,19 @@ from datetime import datetime
 from typing import List, Optional
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from database import get_session
 from models import Product, ProductLink
-from schemas.product import ProductCreate, ProductLinkCreate, ProductRead, ProductUpdate
+from schemas.product import (
+    ProductCreate,
+    ProductLinkCreate,
+    ProductListResponse,
+    ProductRead,
+    ProductUpdate,
+)
 from services.price_service import check_product_link_price, refresh_product_cache
 from services.scraper.detector import detect_platform
 
@@ -110,16 +117,36 @@ def create_product(payload: ProductCreate, session: Session = Depends(get_sessio
     return product
 
 
-@router.get("/products", response_model=List[ProductRead])
+@router.get("/products", response_model=ProductListResponse)
 def list_products(
     is_active: Optional[bool] = None,
+    search: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
     session: Session = Depends(get_session),
 ):
     query = select(Product)
+    count_query = select(func.count()).select_from(Product)
+
     if is_active is not None:
         query = query.where(Product.is_active == is_active)
-    query = query.order_by(Product.created_at.desc())
-    return session.exec(query).all()
+        count_query = count_query.where(Product.is_active == is_active)
+
+    term = (search or "").strip()
+    if len(term) >= 3:
+        pattern = f"%{term}%"
+        query = query.where(Product.name.ilike(pattern))
+        count_query = count_query.where(Product.name.ilike(pattern))
+
+    total = session.exec(count_query).one()
+
+    query = (
+        query.order_by(Product.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    items = session.exec(query).all()
+    return ProductListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/products/{product_id}", response_model=ProductRead)

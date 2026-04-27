@@ -41,9 +41,9 @@
 
     <div id="detail-shell" class="hidden min-w-0 space-y-6 overflow-x-hidden">
       <section class="overflow-hidden rounded-[1.75rem] border border-stone-800 bg-stone-900 shadow-xl shadow-black/20">
-        <div class="grid min-w-0 gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <div class="grid min-w-0 grid-cols-1 gap-0 lg:grid-cols-[240px_minmax(0,1fr)]">
           <div id="product-image-shell"
-            class="aspect-[16/10] max-h-[180px] border-b border-stone-800 bg-stone-950 lg:aspect-auto lg:max-h-none lg:border-b-0 lg:border-r">
+            class="relative aspect-[16/10] w-full max-h-[180px] overflow-hidden border-b border-stone-800 bg-stone-950 lg:aspect-auto lg:max-h-none lg:border-b-0 lg:border-r">
           </div>
 
           <div class="space-y-3 p-4 sm:p-5">
@@ -239,14 +239,14 @@
           <img
             src="${escapeHtml(product.image_url)}"
             alt="${escapeHtml(product.name)}"
-            class="h-full w-full object-cover"
+            class="absolute inset-0 block h-full w-full object-cover"
           />
         `;
         return;
       }
 
       shell.innerHTML = `
-        <div class="flex h-full w-full items-end bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),_transparent_28%),linear-gradient(135deg,#292524,#0c0a09)] p-6">
+        <div class="absolute inset-0 flex items-end bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.12),_transparent_28%),linear-gradient(135deg,#292524,#0c0a09)] p-6">
           <span class="text-xs font-semibold uppercase tracking-[0.3em] text-stone-500">No image yet</span>
         </div>
       `;

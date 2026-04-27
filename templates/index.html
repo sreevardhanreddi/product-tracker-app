@@ -78,13 +78,43 @@
         </div>
       </div>
 
+      <div class="mb-4 flex flex-wrap items-center gap-3">
+        <div class="relative flex-1 min-w-[220px]">
+          <input
+            id="search-input"
+            type="search"
+            autocomplete="off"
+            placeholder="Search products by name (min 3 characters)"
+            class="w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 py-2.5 pr-10 text-sm text-stone-100 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 placeholder:text-stone-500"
+          />
+          <span id="search-hint" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-[0.18em] text-stone-600"></span>
+        </div>
+      </div>
+
+      <div id="pagination" class="mb-4 hidden flex-wrap items-center justify-between gap-3">
+        <p id="pagination-summary" class="text-xs text-stone-500"></p>
+        <div class="flex items-center gap-1.5">
+          <button
+            id="prev-btn"
+            onclick="changePage(-1)"
+            class="inline-flex items-center rounded-full border border-stone-700 bg-stone-800 px-3 py-1.5 text-xs font-semibold text-stone-300 transition hover:border-stone-500 hover:bg-stone-700 hover:text-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >Prev</button>
+          <span id="page-indicator" class="px-2 text-xs text-stone-400"></span>
+          <button
+            id="next-btn"
+            onclick="changePage(1)"
+            class="inline-flex items-center rounded-full border border-stone-700 bg-stone-800 px-3 py-1.5 text-xs font-semibold text-stone-300 transition hover:border-stone-500 hover:bg-stone-700 hover:text-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >Next</button>
+        </div>
+      </div>
+
       <div id="empty-state"
         class="hidden rounded-3xl border border-dashed border-stone-800 bg-stone-950 px-6 py-14 text-center">
         <p class="text-base font-medium text-stone-300">No tracked products yet.</p>
         <p class="mt-2 text-sm text-stone-500">Add a product above to start collecting prices and product images.</p>
       </div>
 
-      <div id="product-grid" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
+      <div id="product-grid" class="grid grid-cols-1 gap-3 lg:grid-cols-2"></div>
     </section>
   </main>
 
@@ -92,6 +122,10 @@
 
   <script>
     let pollTimer = null;
+    let searchDebounce = null;
+    const PAGE_SIZE = 10;
+    const SEARCH_MIN_CHARS = 3;
+    const state = { page: 1, search: "", totalPages: 1 };
     const priceFormatters = new Map();
 
     loadProducts();
@@ -200,7 +234,7 @@
           <img
             src="${escapeHtml(product.image_url)}"
             alt="${escapeHtml(product.name)}"
-            class="h-full w-full object-cover"
+            class="absolute inset-0 block h-full w-full object-cover"
             loading="lazy"
             decoding="async"
             referrerpolicy="no-referrer"
@@ -209,7 +243,7 @@
       }
 
       return `
-        <div class="flex h-full w-full items-end bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 p-4">
+        <div class="absolute inset-0 flex items-end bg-gradient-to-br from-stone-800 via-stone-900 to-stone-950 p-4">
           <span class="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-500">No Image Yet</span>
         </div>
       `;
@@ -230,14 +264,44 @@
       const grid = document.getElementById("product-grid");
       const emptyState = document.getElementById("empty-state");
       const count = document.getElementById("product-count");
-      const res = await fetch("/api/products");
-      const products = await res.json();
+      const pagination = document.getElementById("pagination");
 
-      count.textContent = `${products.length} tracked`;
+      const params = new URLSearchParams({
+        page: String(state.page),
+        page_size: String(PAGE_SIZE),
+      });
+      if (state.search.length >= SEARCH_MIN_CHARS) {
+        params.set("search", state.search);
+      }
+
+      const res = await fetch(`/api/products?${params.toString()}`);
+      const data = await res.json();
+      const products = data.items || [];
+      const total = data.total || 0;
+      state.totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+      // If we ran past the last page (e.g. after deletes), snap back and refetch.
+      if (state.page > state.totalPages) {
+        state.page = state.totalPages;
+        return loadProducts();
+      }
+
+      count.textContent = `${total} tracked`;
+      renderPagination(total);
 
       if (!products.length) {
         grid.innerHTML = "";
+        const emptyText = emptyState.querySelector("p.text-base");
+        const emptyHint = emptyState.querySelector("p.text-sm");
+        if (state.search.length >= SEARCH_MIN_CHARS) {
+          emptyText.textContent = "No products match your search.";
+          emptyHint.textContent = `No tracked products contain "${state.search}".`;
+        } else {
+          emptyText.textContent = "No tracked products yet.";
+          emptyHint.textContent = "Add a product above to start collecting prices and product images.";
+        }
         emptyState.classList.remove("hidden");
+        pagination.classList.add("hidden");
         stopPoll();
         return;
       }
@@ -246,40 +310,58 @@
 
       const cardsMarkup = products.map((product) => {
         const priceRange = getPriceRange(product);
+        const isPending = product.current_price == null;
         return `
         <a
           href="/products/${product.id}"
-          class="group overflow-hidden rounded-[1.3rem] border border-stone-800 bg-stone-950 transition hover:-translate-y-0.5 hover:border-stone-700 hover:shadow-xl hover:shadow-black/20"
+          class="group relative flex gap-3 overflow-hidden rounded-2xl border border-stone-800 bg-stone-950 p-3 transition hover:-translate-y-0.5 hover:border-stone-600 hover:shadow-xl hover:shadow-black/30 sm:gap-4 sm:p-4"
         >
-          <div class="aspect-[7/5] overflow-hidden border-b border-stone-800 bg-stone-900">
+          <span aria-hidden="true" class="absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b from-amber-500/0 via-amber-500/60 to-amber-500/0 opacity-0 transition group-hover:opacity-100"></span>
+
+          <div class="relative aspect-square w-24 shrink-0 overflow-hidden rounded-xl border border-stone-800 bg-stone-900 sm:w-32 lg:w-36">
             ${renderProductImage(product)}
+            ${isPending ? `<span class="absolute left-1.5 top-1.5 inline-flex items-center rounded-full border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.18em] text-amber-200 backdrop-blur">Pending</span>` : ""}
           </div>
-          <div class="space-y-2.5 p-3">
-            <div class="flex items-start justify-between gap-3">
+
+          <div class="flex min-w-0 flex-1 flex-col gap-2">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <h3 class="truncate text-sm font-semibold text-stone-50 sm:text-base" title="${escapeHtml(product.name)}">${escapeHtml(product.name)}</h3>
+                <p class="mt-0.5 text-[11px] text-stone-500">
+                  ${timeAgo(product.last_checked_at)}
+                  <span class="text-stone-700"> · </span>
+                  Created ${formatDate(product.created_at)}
+                </p>
+              </div>
+              <span class="hidden shrink-0 items-center gap-1 rounded-full border border-stone-700 bg-stone-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400 transition group-hover:border-amber-500/50 group-hover:bg-amber-500/10 group-hover:text-amber-200 sm:inline-flex">
+                Details
+                <span aria-hidden="true" class="transition group-hover:translate-x-0.5">→</span>
+              </span>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-1.5">${renderSiteBadges(product)}</div>
+
+            <div class="mt-auto grid grid-cols-3 gap-1.5 rounded-xl border border-stone-800 bg-stone-900/50 p-2 sm:gap-2">
               <div class="min-w-0">
-                <h3 class="truncate text-[13px] font-semibold text-stone-50" title="${escapeHtml(product.name)}">${escapeHtml(product.name)}</h3>
-                <p class="mt-1 text-[11px] text-stone-500">${timeAgo(product.last_checked_at)}</p>
-                <p class="mt-0.5 text-[11px] text-stone-600">Created ${formatDate(product.created_at)}</p>
-              </div>
-              <span class="inline-flex shrink-0 items-center rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-300 transition group-hover:border-sky-400 group-hover:text-sky-200">Details</span>
-            </div>
-            <div class="flex flex-wrap gap-1.5">${renderSiteBadges(product)}</div>
-            <div class="grid grid-cols-3 gap-2 rounded-2xl border border-stone-800 bg-stone-900/60 p-2">
-              <div>
                 <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-stone-500">Current</p>
-                <p class="mt-1 text-[11px] font-semibold text-amber-300">${formatPrice(product.currency, product.current_price)}</p>
+                <p class="mt-1 truncate text-xs font-semibold text-amber-300 sm:text-sm">${formatPrice(product.currency, product.current_price)}</p>
               </div>
-              <div>
+              <div class="min-w-0 border-l border-stone-800 pl-1.5 sm:pl-2">
                 <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-stone-500">Min</p>
-                <p class="mt-1 text-[11px] font-semibold text-emerald-300">${formatPrice(product.currency, priceRange.min)}</p>
+                <p class="mt-1 truncate text-xs font-semibold text-emerald-300 sm:text-sm">${formatPrice(product.currency, priceRange.min)}</p>
               </div>
-              <div>
+              <div class="min-w-0 border-l border-stone-800 pl-1.5 sm:pl-2">
                 <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-stone-500">Max</p>
-                <p class="mt-1 text-[11px] font-semibold text-rose-300">${formatPrice(product.currency, priceRange.max)}</p>
+                <p class="mt-1 truncate text-xs font-semibold text-rose-300 sm:text-sm">${formatPrice(product.currency, priceRange.max)}</p>
               </div>
             </div>
-            ${product.current_price == null ? `<div class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending scrape</div>` : ""}
-            ${product.target_price != null ? `<p class="text-xs text-stone-500">Target: ${formatPrice(product.currency, product.target_price)}</p>` : ""}
+
+            ${product.target_price != null ? `
+              <p class="text-[11px] text-stone-500">
+                <span class="text-stone-600">Target</span>
+                <span class="ml-1 font-medium text-stone-300">${formatPrice(product.currency, product.target_price)}</span>
+              </p>
+            ` : ""}
           </div>
         </a>
         `;
@@ -292,6 +374,60 @@
       );
       hasPending ? startPoll() : stopPoll();
     }
+
+    function renderPagination(total) {
+      const pagination = document.getElementById("pagination");
+      const summary = document.getElementById("pagination-summary");
+      const indicator = document.getElementById("page-indicator");
+      const prevBtn = document.getElementById("prev-btn");
+      const nextBtn = document.getElementById("next-btn");
+
+      if (total <= PAGE_SIZE) {
+        pagination.classList.add("hidden");
+        return;
+      }
+
+      pagination.classList.remove("hidden");
+      pagination.classList.add("flex");
+      const start = (state.page - 1) * PAGE_SIZE + 1;
+      const end = Math.min(state.page * PAGE_SIZE, total);
+      summary.textContent = `Showing ${start}–${end} of ${total}`;
+      indicator.textContent = `Page ${state.page} of ${state.totalPages}`;
+      prevBtn.disabled = state.page <= 1;
+      nextBtn.disabled = state.page >= state.totalPages;
+    }
+
+    function changePage(delta) {
+      const next = state.page + delta;
+      if (next < 1 || next > state.totalPages) return;
+      state.page = next;
+      stopPoll();
+      loadProducts();
+    }
+
+    document.getElementById("search-input").addEventListener("input", (event) => {
+      const value = event.target.value.trim();
+      const hint = document.getElementById("search-hint");
+      if (value.length > 0 && value.length < SEARCH_MIN_CHARS) {
+        hint.textContent = `${SEARCH_MIN_CHARS - value.length} more`;
+      } else {
+        hint.textContent = "";
+      }
+
+      // Only act when search is empty (clear) or meets min length.
+      if (value.length > 0 && value.length < SEARCH_MIN_CHARS) {
+        return;
+      }
+
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        if (state.search === value) return;
+        state.search = value;
+        state.page = 1;
+        stopPoll();
+        loadProducts();
+      }, 250);
+    });
 
     async function refreshAllProducts() {
       const btn = document.getElementById("refresh-all-btn");
@@ -339,6 +475,7 @@
 
         form.reset();
         status.textContent = "Tracking queued.";
+        state.page = 1;
         await loadProducts();
         startPoll();
       } finally {
