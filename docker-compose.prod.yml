@@ -80,7 +80,7 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    command: celery -A tasks.celery_app.celery_app worker --loglevel=warning --concurrency=2
+    command: celery -A tasks.celery_app.celery_app worker --loglevel=info --concurrency=2
     cpus: 1.0
     mem_limit: 1g
 
@@ -97,7 +97,7 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
-    command: celery -A tasks.celery_app.celery_app beat --loglevel=warning
+    command: celery -A tasks.celery_app.celery_app beat --loglevel=info
     cpus: 0.25
     mem_limit: 256m
 
