@@ -8,7 +8,7 @@ Track product prices across multiple online stores from a single dashboard. Add 
 
 ## Features
 
-- **Multi-store support** — Amazon, Flipkart, Shopify, Myntra, Healthkart
+- **Multi-store support** — Amazon, Flipkart, Shopify, Myntra, Healthkart, Robu, WOL3D, Hydrotech 3D
 - **Automatic price checks** — Celery Beat runs on a configurable schedule
 - **Price history charts** — visual price trends per product and source
 - **Multiple links per product** — compare the same item across stores

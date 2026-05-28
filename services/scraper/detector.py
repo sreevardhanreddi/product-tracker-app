@@ -13,6 +13,9 @@ class Platform(str, Enum):
     TRUEBASICS = "truebasics"
     THEWHOLETRUTH = "thewholetruth"
     NUTRABAY = "nutrabay"
+    ROBU = "robu"
+    WOL3D = "wol3d"
+    HYDROTECH3D = "hydrotech3d"
 
 
 def detect_platform(url: str) -> Platform:
@@ -43,6 +46,12 @@ def detect_platform(url: str) -> Platform:
         return Platform.THEWHOLETRUTH
     if "nutrabay." in host:
         return Platform.NUTRABAY
+    if "robu.in" in host:
+        return Platform.ROBU
+    if "wol3d.com" in host:
+        return Platform.WOL3D
+    if "hydrotech3dchennai.com" in host:
+        return Platform.HYDROTECH3D
 
     # Shopify probe via the public JSON API endpoint
     handle = parsed.path.rstrip("/").split("/")[-1]
@@ -57,7 +66,7 @@ def detect_platform(url: str) -> Platform:
     raise ValueError(
         f"Could not detect platform for URL: {url}. "
         "Supported platforms: Amazon, Flipkart, Shopify, Myntra, HealthKart, "
-        "TrueBasics, The Whole Truth, Nutrabay."
+        "TrueBasics, The Whole Truth, Nutrabay, Robu, WOL3D, Hydrotech 3D."
     )
 
 
@@ -76,6 +85,8 @@ def get_scraper(url: str, headless: bool | None = None):
     from .nutrabay import NutrabayScraper
     from .shopify import ShopifyScraper
     from .thewholetruth import TheWholeTruthScraper
+    from .wix import WixScraper
+    from .woocommerce import WooCommerceScraper
 
     platform = detect_platform(url)
     kwargs = {
@@ -97,5 +108,9 @@ def get_scraper(url: str, headless: bool | None = None):
         return TheWholeTruthScraper(**kwargs), platform.value
     elif platform == Platform.NUTRABAY:
         return NutrabayScraper(**kwargs), platform.value
+    elif platform in (Platform.ROBU, Platform.WOL3D):
+        return WooCommerceScraper(**kwargs), platform.value
+    elif platform == Platform.HYDROTECH3D:
+        return WixScraper(**kwargs), platform.value
     else:
         return ShopifyScraper(**kwargs), platform.value
