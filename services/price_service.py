@@ -125,7 +125,7 @@ def check_product_link_price(
 
     refresh_product_cache(product, session)
 
-    if previous_price is not None and previous_price != data.price:
+    if previous_price is not None and previous_price != data.price and data.in_stock:
         direction = "decreased" if data.price < previous_price else "increased"
         status_key = (
             "price_decreased" if data.price < previous_price else "price_increased"
