@@ -116,6 +116,27 @@
     const state = { page: 1, search: "", totalPages: 1 };
     const priceFormatters = new Map();
 
+    function readStateFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const page = parseInt(params.get("page"), 10);
+      state.page = Number.isFinite(page) && page > 0 ? page : 1;
+      const search = (params.get("search") || "").trim();
+      state.search = search.length >= SEARCH_MIN_CHARS ? search : "";
+    }
+
+    function syncUrl() {
+      const params = new URLSearchParams();
+      if (state.page > 1) params.set("page", String(state.page));
+      if (state.search.length >= SEARCH_MIN_CHARS) params.set("search", state.search);
+      const query = params.toString();
+      const url = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+      window.history.replaceState(null, "", url);
+    }
+
+    readStateFromUrl();
+    const searchInput = document.getElementById("search-input");
+    searchInput.value = state.search;
+
     loadProducts();
 
     function formatPrice(currency, price) {
@@ -274,6 +295,7 @@
         return loadProducts();
       }
 
+      syncUrl();
       count.textContent = `${total} tracked`;
       renderPagination(total);
 
