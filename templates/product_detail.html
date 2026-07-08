@@ -22,7 +22,7 @@
 
 <body class="min-h-screen bg-stone-950 text-stone-100 antialiased">
   <main class="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-    <a href="/"
+    <a id="back-link" href="/"
       class="inline-flex w-fit items-center gap-2 rounded-full border border-stone-700 bg-stone-900 px-4 py-2 text-sm font-semibold text-stone-300 transition hover:border-stone-600 hover:text-stone-100">
       <span aria-hidden="true">←</span>
       Back to products
@@ -151,7 +151,30 @@
       all: { label: "All time", allTime: true },
     };
 
+    function syncBackLink() {
+      const backLink = document.getElementById("back-link");
+      if (!backLink) return;
+
+      // If we arrived from the products listing, go back through history so the
+      // listing's own URL state (page/search) is restored — keeping this page's URL clean.
+      let cameFromListing = false;
+      try {
+        const ref = document.referrer ? new URL(document.referrer) : null;
+        cameFromListing = Boolean(ref) && ref.origin === window.location.origin && ref.pathname === "/";
+      } catch {
+        cameFromListing = false;
+      }
+
+      if (cameFromListing) {
+        backLink.addEventListener("click", (event) => {
+          event.preventDefault();
+          window.history.back();
+        });
+      }
+    }
+
     document.addEventListener("DOMContentLoaded", async () => {
+      syncBackLink();
       await loadProduct();
     });
 
