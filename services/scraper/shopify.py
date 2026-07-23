@@ -44,6 +44,8 @@ class ShopifyScraper(BaseScraper):
     Strategy:
     1. Try the public JSON API: GET /products/{handle}.json
        Fast, no browser needed; works on most Shopify stores.
+       Stock status comes from a second request to /products/{handle}.js,
+       since the .json endpoint strips per-variant `available`.
     2. Fall back to Playwright if the JSON endpoint fails or returns
        unexpected data (e.g., store requires login or handle differs).
     """
@@ -74,7 +76,7 @@ class ShopifyScraper(BaseScraper):
 
         variant = self._select_variant(data.get("variants", []), variant_id)
         price = float(variant["price"])
-        in_stock = bool(variant.get("available", True))
+        in_stock = self._fetch_stock_status(parsed, handle, variant.get("id"))
         image_url = self._select_image_url(data, variant)
         # Shopify JSON doesn't always expose currency; fall back to USD
         currency = variant.get("price_currency") or "USD"
@@ -88,6 +90,30 @@ class ShopifyScraper(BaseScraper):
             raw_price_text=variant["price"],
             scrape_method="requests",
         )
+
+    @staticmethod
+    def _fetch_stock_status(parsed, handle: str, variant_id) -> bool:
+        """
+        Fetch per-variant stock status from the .js endpoint, since the
+        public .json endpoint strips `available`. Best-effort: if the
+        request fails, assume in stock rather than failing the scrape.
+        """
+        js_url = f"{parsed.scheme}://{parsed.hostname}/products/{handle}.js"
+        try:
+            r = requests.get(
+                js_url,
+                headers=_JSON_HEADERS,
+                timeout=10,
+                allow_redirects=True,
+            )
+            r.raise_for_status()
+            data = r.json()
+            for variant in data.get("variants", []):
+                if str(variant.get("id")) == str(variant_id):
+                    return bool(variant.get("available", False))
+            return bool(data.get("available", True))
+        except Exception:
+            return True
 
     def _scrape_playwright(self, url: str) -> ScrapedProduct:
         with sync_playwright() as pw:
@@ -123,11 +149,25 @@ class ShopifyScraper(BaseScraper):
                 )
                 image_url = img_el.get_attribute("src") if img_el else None
 
+                in_stock = True
+                add_btn = page.query_selector(
+                    "button[name='add'], .product-form__submit, [data-add-to-cart]"
+                )
+                if add_btn:
+                    btn_text = add_btn.inner_text().strip().lower()
+                    if (
+                        add_btn.is_disabled()
+                        or "sold out" in btn_text
+                        or "unavailable" in btn_text
+                        or "out of stock" in btn_text
+                    ):
+                        in_stock = False
+
                 return ScrapedProduct(
                     name=name,
                     price=price,
                     currency="USD",
-                    in_stock=True,
+                    in_stock=in_stock,
                     image_url=image_url,
                     raw_price_text=price_raw,
                     scrape_method="browser",
