@@ -143,6 +143,8 @@
     let chart = null;
     const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
     let selectedChartRange = "last500";
+    // Latest back-in-stock transition (ms epoch) found in the loaded chart range.
+    let lastBackInStockAt = null;
     const chartRangeConfig = {
       last500: { label: "Last 500 entries", limit: 500 },
       days30: { label: "Last 30 days", days: 30 },
@@ -340,6 +342,7 @@
       parts.push(range.label);
       parts.push(shouldGroupByDay() ? "Grouped by day" : "All entries");
       if (product.last_checked_at) parts.push(`Last checked ${timeAgo(product.last_checked_at)}`);
+      if (lastBackInStockAt != null) parts.push(`Back in stock ${timeAgo(new Date(lastBackInStockAt).toISOString())}`);
       if (product.target_price != null) parts.push(`Alert below ${formatPrice(product.currency, product.target_price)}`);
       parts.push(`Timezone ${browserTimeZone}`);
       document.getElementById("chart-meta").textContent = parts.join(" · ");
@@ -389,22 +392,41 @@
         ).getTime();
 
         // Keep the latest sample from each day so the chart reflects the closing tracked price.
-        dailyPoints.set(dayStamp, { x: dayStamp, y: price });
+        dailyPoints.set(dayStamp, { x: dayStamp, y: price, inStock: point.in_stock !== false });
       }
 
-      return [...dailyPoints.values()].sort((a, b) => a.x - b.x);
+      return markStockTransitions([...dailyPoints.values()].sort((a, b) => a.x - b.x));
     }
 
     function toEntryXY(pts) {
-      return pts
+      const xy = pts
         .map((point) => {
           const scrapedAt = parseApiDate(point.scraped_at);
           const price = Number(point.price);
           if (!scrapedAt || Number.isNaN(scrapedAt.getTime()) || !Number.isFinite(price)) return null;
-          return { x: scrapedAt.getTime(), y: price };
+          return { x: scrapedAt.getTime(), y: price, inStock: point.in_stock !== false };
         })
         .filter(Boolean)
         .sort((a, b) => a.x - b.x);
+      return markStockTransitions(xy);
+    }
+
+    // Flag points where the product came back in stock (previous point was out of stock).
+    function markStockTransitions(xy) {
+      for (let i = 0; i < xy.length; i++) {
+        xy[i].backInStock = i > 0 && xy[i].inStock && !xy[i - 1].inStock;
+      }
+      return xy;
+    }
+
+    // Per-point marker styling: rose = out of stock, emerald diamond = back in stock.
+    function stockPointStyles(xy, baseColor, baseRadius) {
+      return {
+        pointBackgroundColor: xy.map((p) => p.backInStock ? "#34d399" : p.inStock ? baseColor : "#f43f5e"),
+        pointBorderColor: xy.map((p) => p.backInStock ? "#34d399" : p.inStock ? baseColor : "#f43f5e"),
+        pointRadius: xy.map((p) => p.backInStock ? baseRadius + 3 : p.inStock ? baseRadius : baseRadius + 1),
+        pointStyle: xy.map((p) => (p.backInStock ? "rectRot" : "circle")),
+      };
     }
 
     function shouldGroupByDay() {
@@ -428,6 +450,11 @@
           ${link.current_price != null
           ? `<span class="whitespace-nowrap font-semibold text-stone-100">${formatPrice(link.currency, link.current_price)}</span>`
           : `<span class="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-300">Pending</span>`}
+          ${link.in_stock == null
+          ? ""
+          : link.in_stock
+            ? `<span class="inline-flex items-center rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-300">In stock</span>`
+            : `<span class="inline-flex items-center rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-300">Out of stock</span>`}
           <button
             class="${link.alerts_enabled
           ? "shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-amber-200 transition hover:border-amber-400 hover:bg-amber-500/15"
@@ -624,7 +651,7 @@
             backgroundColor: color.bg,
             fill: false,
             tension: 0.35,
-            pointRadius: seriesData.length > 90 ? 2 : 3,
+            ...stockPointStyles(seriesData, color.border, seriesData.length > 90 ? 2 : 3),
             pointHoverRadius: 5,
           };
         });
@@ -637,12 +664,23 @@
           backgroundColor: "rgba(87,83,78,.08)",
           fill: true,
           tension: 0.35,
-          pointRadius: xy.length > 90 ? 2 : 4,
+          ...stockPointStyles(xy, "#57534e", xy.length > 90 ? 2 : 4),
           pointHoverRadius: 6,
         }];
       }
 
       const suggestedYMax = getYAxisMax(datasets);
+
+      // Surface the most recent back-in-stock transition in the chart meta line.
+      lastBackInStockAt = null;
+      for (const dataset of datasets) {
+        for (const point of dataset.data || []) {
+          if (point.backInStock && (lastBackInStockAt == null || point.x > lastBackInStockAt)) {
+            lastBackInStockAt = point.x;
+          }
+        }
+      }
+      if (selectedProduct) renderChartMeta(selectedProduct);
 
       if (chart) chart.destroy();
       chart = new Chart(document.getElementById("priceChart"), {
@@ -670,8 +708,17 @@
                   : formatBrowserDate(new Date(items[0].parsed.x).toISOString()),
                 label: (ctx) => {
                   const value = Number(ctx.parsed?.y);
-                  if (!Number.isFinite(value)) return `${ctx.dataset.label}: —`;
-                  return `${ctx.dataset.label}: ${curr} ${value.toFixed(2)}`;
+                  const base = Number.isFinite(value)
+                    ? `${ctx.dataset.label}: ${curr} ${value.toFixed(2)}`
+                    : `${ctx.dataset.label}: —`;
+                  if (ctx.raw?.backInStock) return `${base} · Back in stock`;
+                  if (ctx.raw?.inStock === false) return `${base} · Out of stock`;
+                  return base;
+                },
+                labelTextColor: (ctx) => {
+                  if (ctx.raw?.backInStock) return "#34d399";
+                  if (ctx.raw?.inStock === false) return "#fda4af";
+                  return "#e7e5e4";
                 },
               },
             },
