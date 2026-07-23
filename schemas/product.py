@@ -23,6 +23,8 @@ class ProductLinkRead(BaseModel):
     source_label: str
     current_price: Optional[float]
     currency: str
+    in_stock: Optional[bool]
+    last_in_stock_price: Optional[float]
     image_url: Optional[str]
     is_active: bool
     alerts_enabled: bool

@@ -16,6 +16,7 @@ MessageSender = Callable[[str], None]
 TELEGRAM_STATUS_EMOJI = {
     "price_decreased": "🔻",
     "price_increased": "🔺",
+    "back_in_stock": "✅",
 }
 
 

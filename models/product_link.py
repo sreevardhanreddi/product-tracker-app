@@ -15,6 +15,8 @@ class ProductLink(SQLModel, table=True):
     platform: str = Field(max_length=50)  # "amazon" | "flipkart" | "shopify" | "myntra"
     current_price: Optional[float] = Field(default=None)
     currency: str = Field(default="INR", max_length=10)
+    in_stock: Optional[bool] = Field(default=None)
+    last_in_stock_price: Optional[float] = Field(default=None)
     image_url: Optional[str] = Field(default=None, max_length=2000)
     is_active: bool = Field(default=True)
     alerts_enabled: bool = Field(default=True)

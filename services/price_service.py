@@ -94,7 +94,10 @@ def check_product_link_price(
         return None
 
     now = datetime.utcnow()
-    previous_price = link.current_price
+    previous_in_stock = link.in_stock
+    # Compare against the last known in-stock price so out-of-stock scrapes
+    # (which may carry stale or placeholder prices) never pollute the baseline.
+    previous_price = link.last_in_stock_price
 
     history = PriceHistory(
         product_id=product.id,
@@ -109,6 +112,9 @@ def check_product_link_price(
 
     link.current_price = data.price
     link.currency = data.currency
+    link.in_stock = data.in_stock
+    if data.in_stock:
+        link.last_in_stock_price = data.price
     link.last_checked_at = now
     link.updated_at = now
     if data.image_url:
@@ -125,7 +131,64 @@ def check_product_link_price(
 
     refresh_product_cache(product, session)
 
-    if previous_price is not None and previous_price != data.price and data.in_stock:
+    back_in_stock = previous_in_stock is False and data.in_stock
+
+    if back_in_stock:
+        if not alerts_enabled_for(product, link):
+            logger.info(
+                "Back-in-stock alert skipped | link_id=%d alerts disabled",
+                link.id,
+            )
+        else:
+            indicator = get_telegram_status_emoji("back_in_stock")
+            price_lines = f"Price: {data.currency} {data.price:.2f}"
+            telegram_price_lines = f"*Price:* {escape_telegram_markdown(f'{data.currency} {data.price:.2f}')}"
+            if previous_price is not None and previous_price != data.price:
+                direction = "decreased" if data.price < previous_price else "increased"
+                delta_amount = abs(data.price - previous_price)
+                delta_percent = (
+                    (delta_amount / previous_price) * 100 if previous_price > 0 else 0.0
+                )
+                price_lines += (
+                    f"\nPrevious in-stock price: {data.currency} {previous_price:.2f} "
+                    f"({direction} by {data.currency} {delta_amount:.2f}, {delta_percent:.2f}%)"
+                )
+                telegram_price_lines += (
+                    f"\n*Previous in\\-stock price:* "
+                    f"{escape_telegram_markdown(f'{data.currency} {previous_price:.2f}')} "
+                    f"\\({escape_telegram_markdown(f'{direction} by {data.currency} {delta_amount:.2f}, {delta_percent:.2f}%')}\\)"
+                )
+            message = (
+                f"{indicator} Back in stock: '{product.name}'\n"
+                f"{price_lines}\n"
+                f"Link: {link.url}"
+            )
+            telegram_message = (
+                f"{indicator} *Back in stock*\n"
+                f"*Product:* {escape_telegram_markdown(product.name)}\n"
+                f"{telegram_price_lines}\n"
+                f"*Link:* [{escape_telegram_markdown(link.url)}]({escape_telegram_link(link.url)})"
+            )
+            try:
+                channel = send_message(
+                    message=message,
+                    subject=f"Back in Stock: {product.name}",
+                    fallback_log_prefix="[BACK IN STOCK]",
+                    telegram_message=telegram_message,
+                )
+                logger.info(
+                    "Back-in-stock alert sent | link_id=%d channel=%s price=%.2f",
+                    link.id,
+                    channel,
+                    data.price,
+                )
+            except Exception as exc:
+                logger.error(
+                    "Back-in-stock alert failed | link_id=%d error=%s",
+                    link.id,
+                    exc,
+                )
+    elif previous_price is not None and previous_price != data.price and data.in_stock:
         direction = "decreased" if data.price < previous_price else "increased"
         status_key = (
             "price_decreased" if data.price < previous_price else "price_increased"
