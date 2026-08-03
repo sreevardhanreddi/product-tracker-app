@@ -1,9 +1,13 @@
+import logging
+import time
 from urllib.parse import parse_qs, urlparse
 
 import requests
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper, ScrapedProduct, ScraperError
+
+logger = logging.getLogger(__name__)
 
 # Ordered list of CSS selectors to try for product title on Shopify stores
 _TITLE_SELECTORS = [
@@ -36,6 +40,59 @@ _JSON_HEADERS = {
     "Referer": "https://www.google.com/",
 }
 
+# Shopify throttles the public /products/*.json and *.js endpoints per store.
+# The limit is short-lived, so a few backed-off retries recover far more often
+# than they fail — and failing here is expensive (browser fallback) or wrong
+# (a missed stock reading turns into a false back-in-stock alert).
+_RETRY_STATUSES = {429, 430, 503}
+_MAX_ATTEMPTS = 4
+_BACKOFF_BASE_SECONDS = 1.5
+_MAX_BACKOFF_SECONDS = 20.0
+
+
+class ShopifyThrottled(ScraperError):
+    """Shopify kept rate-limiting us after every retry was exhausted."""
+
+
+def _retry_delay(response, attempt: int) -> float:
+    """Honour Retry-After when present, else exponential backoff."""
+    retry_after = (response.headers or {}).get("Retry-After") if response else None
+    if retry_after:
+        try:
+            return min(float(retry_after), _MAX_BACKOFF_SECONDS)
+        except (TypeError, ValueError):
+            pass
+    return min(_BACKOFF_BASE_SECONDS * (2**attempt), _MAX_BACKOFF_SECONDS)
+
+
+def get_with_retry(url: str, timeout: int = 10):
+    """
+    GET a Shopify JSON endpoint, retrying through rate-limit responses.
+
+    Raises ShopifyThrottled if every attempt was throttled, so callers can
+    tell "the store is rate-limiting us" apart from "the store said no".
+    """
+    last_response = None
+    for attempt in range(_MAX_ATTEMPTS):
+        response = requests.get(
+            url,
+            headers=_JSON_HEADERS,
+            timeout=timeout,
+            allow_redirects=True,
+        )
+        if response.status_code not in _RETRY_STATUSES:
+            response.raise_for_status()
+            return response
+
+        last_response = response
+        if attempt < _MAX_ATTEMPTS - 1:
+            time.sleep(_retry_delay(response, attempt))
+
+    raise ShopifyThrottled(
+        f"Shopify rate-limited {url} "
+        f"({last_response.status_code}) after {_MAX_ATTEMPTS} attempts"
+    )
+
 
 class ShopifyScraper(BaseScraper):
     """
@@ -53,8 +110,13 @@ class ShopifyScraper(BaseScraper):
     def scrape(self, url: str) -> ScrapedProduct:
         try:
             return self._scrape_requests(url)
-        except Exception:
-            pass
+        except ShopifyThrottled as e:
+            # Falling back costs a browser launch, and with prefetch_multiplier=1
+            # those serialise across the worker pool. Log at warning so a store
+            # that is persistently throttling us is visible rather than just slow.
+            logger.warning("Shopify throttled, falling back to browser | %s", e)
+        except Exception as e:
+            logger.info("Shopify JSON path failed (%s), falling back to browser", e)
         return self._scrape_playwright(url)
 
     def _scrape_requests(self, url: str) -> ScrapedProduct:
@@ -63,13 +125,7 @@ class ShopifyScraper(BaseScraper):
         api_url = f"{parsed.scheme}://{parsed.hostname}/products/{handle}.json"
         variant_id = self._extract_variant_id(url)
 
-        r = requests.get(
-            api_url,
-            headers=_JSON_HEADERS,
-            timeout=10,
-            allow_redirects=True,
-        )
-        r.raise_for_status()
+        r = get_with_retry(api_url)
         data = r.json().get("product")
         if not data:
             raise ScraperError("No 'product' key in Shopify JSON response")
@@ -95,25 +151,21 @@ class ShopifyScraper(BaseScraper):
     def _fetch_stock_status(parsed, handle: str, variant_id) -> bool:
         """
         Fetch per-variant stock status from the .js endpoint, since the
-        public .json endpoint strips `available`. Best-effort: if the
-        request fails, assume in stock rather than failing the scrape.
+        public .json endpoint strips `available`.
+
+        A throttled request must NOT be treated as "in stock": price_service
+        raises a back-in-stock alert on a False -> True transition, so
+        guessing True here sends a false alert. On throttling we raise, which
+        drops the whole scrape to the Playwright fallback where stock is read
+        from the add-to-cart button instead.
         """
         js_url = f"{parsed.scheme}://{parsed.hostname}/products/{handle}.js"
-        try:
-            r = requests.get(
-                js_url,
-                headers=_JSON_HEADERS,
-                timeout=10,
-                allow_redirects=True,
-            )
-            r.raise_for_status()
-            data = r.json()
-            for variant in data.get("variants", []):
-                if str(variant.get("id")) == str(variant_id):
-                    return bool(variant.get("available", False))
-            return bool(data.get("available", True))
-        except Exception:
-            return True
+        r = get_with_retry(js_url)
+        data = r.json()
+        for variant in data.get("variants", []):
+            if str(variant.get("id")) == str(variant_id):
+                return bool(variant.get("available", False))
+        return bool(data.get("available", True))
 
     def _scrape_playwright(self, url: str) -> ScrapedProduct:
         with sync_playwright() as pw:

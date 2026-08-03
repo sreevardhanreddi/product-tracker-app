@@ -2,7 +2,7 @@ import html as html_lib
 import json
 import re
 import time
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import requests
 from playwright.sync_api import sync_playwright
@@ -47,7 +47,19 @@ _IMAGE_SELECTORS = [
 
 
 class WooCommerceScraper(BaseScraper):
-    """Scrapes WooCommerce product pages such as Robu and WOL3D."""
+    """
+    Scrapes WooCommerce product pages such as Robu, WOL3D and Meckeys.
+
+    Variable products: a single URL covers every variation, and the
+    product-level price/stock describe the cheapest or the parent, not the
+    variation you care about. Pin one by adding its attribute query params to
+    the tracked URL, exactly as WooCommerce's own variation picker does:
+
+        .../contour-side-printed-keycap-set/?attribute_pa_pick-your-style=black-contour
+
+    `?variation_id=175409` and `?sku=GEN-BK-...` are also accepted. When no
+    selector is present the scraper keeps its existing product-level behaviour.
+    """
 
     def scrape(self, url: str) -> ScrapedProduct:
         requests_error: Exception | None = None
@@ -88,6 +100,20 @@ class WooCommerceScraper(BaseScraper):
                     # data extraction below fails.
                     page_loaded = True
                     page.wait_for_timeout(1200)
+
+                    # Same rule as the requests path: a pinned variation must
+                    # not be answered with parent-level price/stock.
+                    selectors = self._extract_variant_selectors(url)
+                    if selectors:
+                        variation_result = self._scrape_variation(
+                            page.content(), selectors
+                        )
+                        if not variation_result:
+                            raise ScraperError(
+                                f"No WooCommerce variation matched {selectors!r}"
+                            )
+                        variation_result.scrape_method = "browser"
+                        return variation_result
 
                     product_ld = self._extract_product_ld_json(page.content())
                     if product_ld:
@@ -199,11 +225,28 @@ class WooCommerceScraper(BaseScraper):
         return any(marker in lowered for marker in markers)
 
     def _scrape_via_requests(self, url: str) -> ScrapedProduct:
-        store_api_result = self._scrape_via_store_api(url)
-        if store_api_result:
-            return store_api_result
+        selectors = self._extract_variant_selectors(url)
+
+        # A variant request must never be answered with product-level data —
+        # the Store API and ld+json both describe the parent, so a sold-out
+        # variation would read as in stock. Go straight to the HTML, which
+        # carries the per-variation payload.
+        if not selectors:
+            store_api_result = self._scrape_via_store_api(url)
+            if store_api_result:
+                return store_api_result
 
         html = self._fetch_html(url)
+
+        if selectors:
+            variation_result = self._scrape_variation(html, selectors)
+            if variation_result:
+                variation_result.scrape_method = "requests"
+                return variation_result
+            raise ScraperError(
+                f"No WooCommerce variation matched {selectors!r}. "
+                "Check the attribute values against the product page."
+            )
 
         product_ld = self._extract_product_ld_json(html)
         if product_ld:
@@ -311,21 +354,27 @@ class WooCommerceScraper(BaseScraper):
         except ImportError:
             return None
 
-        response = curl_requests.get(
-            api_url,
-            params=params,
-            headers={
-                **_HEADERS,
-                "Accept": "application/json,text/plain,*/*",
-            },
-            timeout=30,
-            allow_redirects=True,
-            impersonate="chrome",
-        )
-        response.raise_for_status()
-        if self._looks_like_cloudflare_html(response.text):
+        try:
+            response = curl_requests.get(
+                api_url,
+                params=params,
+                headers={
+                    **_HEADERS,
+                    "Accept": "application/json,text/plain,*/*",
+                },
+                timeout=30,
+                allow_redirects=True,
+                impersonate="chrome",
+            )
+            response.raise_for_status()
+            if self._looks_like_cloudflare_html(response.text):
+                return None
+            return response.json()
+        except Exception:
+            # Store API missing, disabled, or emitting non-JSON (e.g. a WP
+            # notice/error prepended to the body). Let the caller fall back to
+            # ld+json / HTML parsing instead of aborting the requests path.
             return None
-        return response.json()
 
     def _fetch_html_via_curl_cffi(self, url: str) -> str | None:
         try:
@@ -342,6 +391,162 @@ class WooCommerceScraper(BaseScraper):
         )
         response.raise_for_status()
         return response.text
+
+    @staticmethod
+    def _extract_variant_selectors(url: str) -> dict:
+        """
+        Pull variation selectors out of the tracked URL's query string.
+
+        Recognises WooCommerce's own `attribute_*` params (what the variation
+        dropdowns produce), plus `variation_id` and `sku` as direct pins.
+        """
+        query = parse_qs(urlparse(url).query)
+        selectors: dict = {}
+
+        attributes = {
+            key: values[0]
+            for key, values in query.items()
+            if key.startswith("attribute_") and values and values[0]
+        }
+        if attributes:
+            selectors["attributes"] = attributes
+
+        for key in ("variation_id", "sku"):
+            values = query.get(key)
+            if values and values[0]:
+                selectors[key] = values[0]
+
+        return selectors
+
+    @staticmethod
+    def _extract_variations_json(html: str) -> list | None:
+        """
+        Read the variations payload WooCommerce inlines on the variations form.
+
+        Note: stores raise `woocommerce_ajax_variation_threshold` (default 30)
+        for products with many variations, and above it WooCommerce omits this
+        attribute and loads variations over AJAX instead — so a missing payload
+        is expected, not an error.
+        """
+        match = re.search(
+            r'data-product_variations=(["\'])(.*?)\1',
+            html,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if not match:
+            return None
+
+        raw = html_lib.unescape(match.group(2)).strip()
+        if not raw or raw in ("false", "[]"):
+            return None
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+
+        return data if isinstance(data, list) else None
+
+    @staticmethod
+    def _variation_matches(variation: dict, selectors: dict) -> bool:
+        variation_id = selectors.get("variation_id")
+        if variation_id:
+            return str(variation.get("variation_id")) == str(variation_id)
+
+        sku = selectors.get("sku")
+        if sku:
+            return str(variation.get("sku") or "").strip() == sku.strip()
+
+        attributes = selectors.get("attributes") or {}
+        if not attributes:
+            return False
+
+        actual = variation.get("attributes") or {}
+        for key, wanted in attributes.items():
+            current = actual.get(key)
+            # WooCommerce uses "" for "any value of this attribute", which
+            # matches whatever the caller asked for.
+            if current in (None, ""):
+                continue
+            if str(current).strip().lower() != str(wanted).strip().lower():
+                return False
+        return True
+
+    def _scrape_variation(self, html: str, selectors: dict) -> ScrapedProduct | None:
+        variations = self._extract_variations_json(html)
+        if not variations:
+            return None
+
+        match = next(
+            (v for v in variations if self._variation_matches(v, selectors)),
+            None,
+        )
+        if not match:
+            return None
+
+        return self._build_from_variation(match, html)
+
+    def _build_from_variation(self, variation: dict, html: str) -> ScrapedProduct:
+        raw_price = variation.get("display_price")
+        if raw_price is None:
+            raw_price = variation.get("display_regular_price")
+        if raw_price is None:
+            raise ScraperError("Variation carries no price")
+
+        price = self._parse_price(str(raw_price))
+        currency = self._extract_currency_from_html(html) or "INR"
+
+        image = variation.get("image")
+        image_url = (
+            image.get("url") or image.get("src") if isinstance(image, dict) else None
+        )
+        if not image_url:
+            image_url = self._extract_meta_content(html, "property", "og:image")
+
+        # Prefer the ld+json name: og:title tends to carry a " - Store.com"
+        # suffix, which would make variant names inconsistent with the
+        # product-level path.
+        product_ld = self._extract_product_ld_json(html) or {}
+        name = (
+            str(product_ld.get("name") or "").strip()
+            or self._extract_meta_content(html, "property", "og:title")
+            or self._extract_title_from_html(html)
+            or "WooCommerce Product"
+        )
+        label = self._variation_label(variation)
+        if label:
+            name = f"{name} — {label}"
+
+        return ScrapedProduct(
+            name=name,
+            price=price,
+            currency=currency,
+            # Unlike the product level, this is the real per-variation flag.
+            in_stock=bool(variation.get("is_in_stock", False)),
+            image_url=image_url,
+            raw_price_text=self._format_price(price, currency),
+        )
+
+    @staticmethod
+    def _variation_label(variation: dict) -> str:
+        sku = str(variation.get("sku") or "").strip()
+        if sku:
+            return sku
+
+        attributes = variation.get("attributes") or {}
+        values = [str(v).strip() for v in attributes.values() if str(v).strip()]
+        return ", ".join(values)
+
+    @staticmethod
+    def _extract_currency_from_html(html: str) -> str | None:
+        match = re.search(
+            r'<meta\s+[^>]*(?:property|itemprop)=["\'](?:product:price:currency|priceCurrency)["\'][^>]*content=["\']([^"\']+)["\']',
+            html,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1).strip()
+        return "INR" if "₹" in html or "&#8377;" in html else None
 
     def _build_from_ld_json(self, data: dict) -> ScrapedProduct:
         offers = data.get("offers") or data.get("Offers")

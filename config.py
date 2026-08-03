@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     # Price check schedule
     PRICE_CHECK_INTERVAL_MINUTES: int = 60
     PRICE_CHANGE_NOTIFY_MIN_PERCENT: float = 1.0
+    # Seconds to space apart checks that hit the same store. Stores like
+    # Shopify rate-limit per host, so links are staggered per hostname rather
+    # than dispatched as one burst. Different hosts still start immediately.
+    PRICE_CHECK_HOST_STAGGER_SECONDS: int = 20
 
     # Alerts (optional — falls back to logging if unset)
     GMAIL_USER: Optional[str] = None

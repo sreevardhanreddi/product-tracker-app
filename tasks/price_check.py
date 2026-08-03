@@ -1,8 +1,12 @@
 import logging
+import random
+from collections import defaultdict
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 from sqlmodel import Session, select
 
+from config import settings
 from database import engine
 from models import ProductLink
 from services.price_service import check_product_link_price
@@ -21,7 +25,7 @@ def check_due_product_links(self):
     check interval has elapsed.
     """
     now = datetime.utcnow()
-    due_link_ids: list[int] = []
+    due_links: list[tuple[int, str]] = []
 
     with Session(engine) as session:
         links = session.exec(
@@ -33,7 +37,7 @@ def check_due_product_links(self):
         for link in links:
             if link.last_checked_at is None:
                 logger.debug("Link %d never checked — queuing", link.id)
-                due_link_ids.append(link.id)
+                due_links.append((link.id, link.url))
                 continue
             next_due = link.last_checked_at + timedelta(
                 minutes=link.check_interval_minutes
@@ -45,13 +49,65 @@ def check_due_product_links(self):
                     link.last_checked_at.isoformat(),
                     next_due.isoformat(),
                 )
-                due_link_ids.append(link.id)
+                due_links.append((link.id, link.url))
 
-    for link_id in due_link_ids:
-        check_single_product_link.delay(link_id)
+    dispatched = _dispatch_staggered_by_host(due_links)
 
-    logger.info("Dispatched price checks | due=%d", len(due_link_ids))
-    return {"dispatched": len(due_link_ids)}
+    logger.info("Dispatched price checks | due=%d", dispatched)
+    return {"dispatched": dispatched}
+
+
+def _hostname(url: str) -> str:
+    try:
+        return (urlparse(url).hostname or "").lower().replace("www.", "")
+    except ValueError:
+        return ""
+
+
+def _dispatch_staggered_by_host(due_links: list[tuple[int, str]]) -> int:
+    """
+    Queue due links, spacing apart the ones that share a hostname.
+
+    Stores rate-limit per host, so dispatching every due link at once makes
+    same-store links collide and earn a 429 — which the scraper then has to
+    back off through, or worse, fails and re-bursts on the next beat. Links on
+    different hosts are unaffected and still start immediately.
+    """
+    stagger = max(settings.PRICE_CHECK_HOST_STAGGER_SECONDS, 0)
+    per_host: dict[str, int] = defaultdict(int)
+    dispatched = 0
+
+    for link_id, url in due_links:
+        host = _hostname(url)
+        position = per_host[host]
+        per_host[host] += 1
+
+        if stagger and position:
+            # Jitter keeps repeated beats from lining up into the same pattern.
+            countdown = position * stagger + random.uniform(0, stagger * 0.25)
+            check_single_product_link.apply_async(args=[link_id], countdown=countdown)
+            logger.debug(
+                "Queued link %d | host=%s position=%d countdown=%.1fs",
+                link_id,
+                host,
+                position,
+                countdown,
+            )
+        else:
+            check_single_product_link.delay(link_id)
+
+        dispatched += 1
+
+    busiest = sorted(per_host.items(), key=lambda kv: kv[1], reverse=True)[:3]
+    if busiest:
+        logger.info(
+            "Stagger plan | stagger=%ds hosts=%d busiest=%s",
+            stagger,
+            len(per_host),
+            ", ".join(f"{host}×{count}" for host, count in busiest),
+        )
+
+    return dispatched
 
 
 @celery_app.task(
