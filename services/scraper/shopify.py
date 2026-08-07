@@ -1,4 +1,5 @@
 import logging
+import re
 import time
 from urllib.parse import parse_qs, urlparse
 
@@ -49,9 +50,32 @@ _MAX_ATTEMPTS = 4
 _BACKOFF_BASE_SECONDS = 1.5
 _MAX_BACKOFF_SECONDS = 20.0
 
+_HTML_HEADERS = {
+    **_JSON_HEADERS,
+    "Accept": "text/html,application/xhtml+xml",
+}
+
+# Headless Shopify storefronts (Hydrogen/Next.js on Vercel, Netlify, ...) serve
+# the customer-facing domain themselves and keep the Shopify store on a separate
+# domain. Their catch-all route answers /products/{handle}.json with 200 + the
+# HTML page, so the failure is silent rather than a 404. Shopify still serves
+# that store's own assets from <store-domain>/cdn/shop/..., which is how we find
+# the domain that does speak the product JSON API.
+_CDN_SHOP_HOST_RE = re.compile(r"https?://([A-Za-z0-9.-]+)/cdn/shop/")
+_MYSHOPIFY_HOST_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*\.myshopify\.com")
+
+# Resolving the backing domain costs a full storefront HTML fetch, and price
+# checks re-scrape the same hosts on every cycle. Keyed by storefront hostname;
+# entries are rewritten whenever a lookup proves them stale.
+_BACKING_HOST_CACHE: dict[str, str] = {}
+
 
 class ShopifyThrottled(ScraperError):
     """Shopify kept rate-limiting us after every retry was exhausted."""
+
+
+class NotShopifyJson(ScraperError):
+    """A host answered /products/{handle}.json with something that isn't it."""
 
 
 def _retry_delay(response, attempt: int) -> float:
@@ -103,6 +127,8 @@ class ShopifyScraper(BaseScraper):
        Fast, no browser needed; works on most Shopify stores.
        Stock status comes from a second request to /products/{handle}.js,
        since the .json endpoint strips per-variant `available`.
+       On headless storefronts the JSON API lives on a different domain than
+       the one in the link, so we resolve that domain from the page HTML.
     2. Fall back to Playwright if the JSON endpoint fails or returns
        unexpected data (e.g., store requires login or handle differs).
     """
@@ -122,20 +148,19 @@ class ShopifyScraper(BaseScraper):
     def _scrape_requests(self, url: str) -> ScrapedProduct:
         parsed = urlparse(url)
         handle = parsed.path.rstrip("/").split("/")[-1]
-        api_url = f"{parsed.scheme}://{parsed.hostname}/products/{handle}.json"
         variant_id = self._extract_variant_id(url)
 
-        r = get_with_retry(api_url)
-        data = r.json().get("product")
-        if not data:
-            raise ScraperError("No 'product' key in Shopify JSON response")
+        data, api_host = self._fetch_product_json(url, parsed, handle)
 
         variant = self._select_variant(data.get("variants", []), variant_id)
         price = float(variant["price"])
-        in_stock = self._fetch_stock_status(parsed, handle, variant.get("id"))
+        in_stock = self._fetch_stock_status(
+            parsed.scheme, api_host, handle, variant.get("id")
+        )
         image_url = self._select_image_url(data, variant)
-        # Shopify JSON doesn't always expose currency; fall back to USD
-        currency = variant.get("price_currency") or "USD"
+        # Shopify JSON doesn't always expose currency; every store this tracker
+        # follows is Indian, matching the ScrapedProduct default.
+        currency = variant.get("price_currency") or "INR"
 
         return ScrapedProduct(
             name=data["title"],
@@ -147,8 +172,97 @@ class ShopifyScraper(BaseScraper):
             scrape_method="requests",
         )
 
+    @classmethod
+    def _fetch_product_json(cls, url: str, parsed, handle: str) -> tuple[dict, str]:
+        """
+        Fetch the product JSON, resolving which host actually serves the API.
+
+        Returns (product_data, api_host) so the follow-up .js stock request
+        goes to the same host. Ordinary stores answer on the link's own host
+        and never pay for the HTML fetch; headless storefronts fall through to
+        domain discovery, and the result is cached per storefront host.
+        """
+        host = parsed.hostname
+        if not host:
+            raise ScraperError(f"No hostname in Shopify URL: {url!r}")
+
+        candidates = [c for c in (_BACKING_HOST_CACHE.get(host), host) if c]
+        tried: list[str] = []
+        last_error: NotShopifyJson | None = None
+
+        for candidate in candidates:
+            if candidate in tried:
+                continue
+            tried.append(candidate)
+            try:
+                data = cls._get_product_json(parsed.scheme, candidate, handle)
+            except NotShopifyJson as e:
+                last_error = e
+                continue
+            _BACKING_HOST_CACHE[host] = candidate
+            return data, candidate
+
+        backing = cls._discover_backing_host(url, host)
+        if backing is None or backing in tried:
+            raise last_error or NotShopifyJson(
+                f"{host} does not serve the Shopify product JSON API"
+            )
+
+        logger.info("Resolved headless Shopify storefront %s -> %s", host, backing)
+        data = cls._get_product_json(parsed.scheme, backing, handle)
+        _BACKING_HOST_CACHE[host] = backing
+        return data, backing
+
     @staticmethod
-    def _fetch_stock_status(parsed, handle: str, variant_id) -> bool:
+    def _get_product_json(scheme: str, host: str, handle: str) -> dict:
+        """GET /products/{handle}.json from one host and unwrap the product."""
+        r = get_with_retry(f"{scheme}://{host}/products/{handle}.json")
+        try:
+            payload = r.json()
+        except ValueError as e:
+            # A headless storefront's catch-all route returns the HTML page
+            # with a 200, so this is the normal signal that we have the
+            # customer-facing domain rather than the Shopify one.
+            raise NotShopifyJson(f"{host} returned non-JSON for {handle}.json") from e
+
+        product = payload.get("product") if isinstance(payload, dict) else None
+        if not product:
+            raise NotShopifyJson(f"No 'product' key in JSON from {host}")
+        return product
+
+    @staticmethod
+    def _discover_backing_host(url: str, storefront_host: str) -> str | None:
+        """
+        Find the Shopify-served domain behind a headless storefront.
+
+        Prefers a *.myshopify.com reference, then any host serving the store's
+        own /cdn/shop/ assets. cdn.shopify.com is excluded: it is the shared
+        asset CDN (and uses /s/files/ paths), not a store domain.
+        """
+        try:
+            r = requests.get(
+                url, headers=_HTML_HEADERS, timeout=15, allow_redirects=True
+            )
+            r.raise_for_status()
+        except Exception as e:
+            logger.info("Could not fetch storefront HTML for %s: %s", url, e)
+            return None
+
+        # RSC/JSON payloads embed URLs with escaped slashes.
+        body = r.text.replace("\\/", "/")
+
+        for match in _MYSHOPIFY_HOST_RE.findall(body):
+            return match.lower()
+
+        for host in _CDN_SHOP_HOST_RE.findall(body):
+            host = host.lower()
+            if host != storefront_host.lower() and host != "cdn.shopify.com":
+                return host
+
+        return None
+
+    @staticmethod
+    def _fetch_stock_status(scheme: str, host: str, handle: str, variant_id) -> bool:
         """
         Fetch per-variant stock status from the .js endpoint, since the
         public .json endpoint strips `available`.
@@ -159,7 +273,7 @@ class ShopifyScraper(BaseScraper):
         drops the whole scrape to the Playwright fallback where stock is read
         from the add-to-cart button instead.
         """
-        js_url = f"{parsed.scheme}://{parsed.hostname}/products/{handle}.js"
+        js_url = f"{scheme}://{host}/products/{handle}.js"
         r = get_with_retry(js_url)
         data = r.json()
         for variant in data.get("variants", []):
@@ -218,7 +332,7 @@ class ShopifyScraper(BaseScraper):
                 return ScrapedProduct(
                     name=name,
                     price=price,
-                    currency="USD",
+                    currency="INR",
                     in_stock=in_stock,
                     image_url=image_url,
                     raw_price_text=price_raw,
