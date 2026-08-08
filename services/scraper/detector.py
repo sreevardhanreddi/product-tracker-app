@@ -37,6 +37,7 @@ class Platform(str, Enum):
     MECKEYS = "meckeys"
     STACKSKB = "stackskb"
     HYDROTECH3D = "hydrotech3d"
+    KEYCHRON = "keychron"
 
 
 def detect_platform(url: str) -> Platform:
@@ -77,6 +78,11 @@ def detect_platform(url: str) -> Platform:
         return Platform.STACKSKB
     if "hydrotech3dchennai.com" in host:
         return Platform.HYDROTECH3D
+    # Matched by hostname rather than probed: keychron.in takes over a minute to
+    # answer a product request, so both probes below would time out and the
+    # store would look undetectable.
+    if "keychron.in" in host:
+        return Platform.KEYCHRON
 
     # Shopify probe via the public JSON API endpoint
     handle = parsed.path.rstrip("/").split("/")[-1]
@@ -94,7 +100,7 @@ def detect_platform(url: str) -> Platform:
         f"Could not detect platform for URL: {url}. "
         "Supported platforms: Amazon, Flipkart, Shopify, Myntra, HealthKart, "
         "TrueBasics, The Whole Truth, Nutrabay, Robu, WOL3D, Meckeys, StacksKB, "
-        "Hydrotech 3D."
+        "Hydrotech 3D, Keychron India."
     )
 
 
@@ -193,6 +199,12 @@ def get_scraper(url: str, headless: bool | None = None):
         Platform.STACKSKB,
     ):
         return WooCommerceScraper(**kwargs), platform.value
+    elif platform == Platform.KEYCHRON:
+        # keychron.in's origin takes roughly a minute to render a product page
+        # or answer its Store API, so every default timeout in both the
+        # requests and browser paths is short enough to guarantee a miss.
+        kwargs["timeout_ms"] = max(kwargs["timeout_ms"], 180_000)
+        return WooCommerceScraper(http_timeout=120, **kwargs), platform.value
     elif platform == Platform.HYDROTECH3D:
         return WixScraper(**kwargs), platform.value
     else:

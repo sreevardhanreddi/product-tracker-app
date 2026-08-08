@@ -59,7 +59,16 @@ class WooCommerceScraper(BaseScraper):
 
     `?variation_id=175409` and `?sku=GEN-BK-...` are also accepted. When no
     selector is present the scraper keeps its existing product-level behaviour.
+
+    `http_timeout` covers the requests-path fetches. It is per-store because
+    response times differ by an order of magnitude across these sites, and a
+    timeout generous enough for the slowest would tie a worker up for minutes
+    on a host that is simply down.
     """
+
+    def __init__(self, *args, http_timeout: int = 30, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.http_timeout = http_timeout
 
     def scrape(self, url: str) -> ScrapedProduct:
         requests_error: Exception | None = None
@@ -282,7 +291,7 @@ class WooCommerceScraper(BaseScraper):
         response = requests.get(
             url,
             headers=_HEADERS,
-            timeout=20,
+            timeout=self.http_timeout,
             allow_redirects=True,
         )
         if response.ok and not self._looks_like_cloudflare_html(response.text):
@@ -307,7 +316,14 @@ class WooCommerceScraper(BaseScraper):
         if not isinstance(data, list) or not data:
             return None
 
-        product = data[0]
+        # A slug lookup returns the parent *and* its variations, which share the
+        # slug (keychron.in answers this one with 2 entries). Order isn't
+        # guaranteed, so picking data[0] blind can price the whole product from
+        # one arbitrary sold-out variation.
+        product = next(
+            (p for p in data if isinstance(p, dict) and p.get("type") != "variation"),
+            data[0],
+        )
         prices = product.get("prices") or {}
         raw_price = (
             prices.get("price")
@@ -341,7 +357,7 @@ class WooCommerceScraper(BaseScraper):
                     **_HEADERS,
                     "Accept": "application/json,text/plain,*/*",
                 },
-                timeout=20,
+                timeout=self.http_timeout,
                 allow_redirects=True,
             )
             if response.ok and not self._looks_like_cloudflare_html(response.text):
@@ -362,7 +378,7 @@ class WooCommerceScraper(BaseScraper):
                     **_HEADERS,
                     "Accept": "application/json,text/plain,*/*",
                 },
-                timeout=30,
+                timeout=self.http_timeout,
                 allow_redirects=True,
                 impersonate="chrome",
             )
@@ -385,7 +401,7 @@ class WooCommerceScraper(BaseScraper):
         response = curl_requests.get(
             url,
             headers=_HEADERS,
-            timeout=30,
+            timeout=self.http_timeout,
             allow_redirects=True,
             impersonate="chrome",
         )
