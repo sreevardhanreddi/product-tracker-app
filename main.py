@@ -2,6 +2,7 @@ import logging
 
 import sentry_sdk
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from config import settings
 
@@ -27,6 +28,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(products_router, prefix="/api", tags=["products"])
 app.include_router(price_history_router, prefix="/api", tags=["price_history"])
