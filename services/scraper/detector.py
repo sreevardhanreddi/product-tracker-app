@@ -38,6 +38,8 @@ class Platform(str, Enum):
     STACKSKB = "stackskb"
     HYDROTECH3D = "hydrotech3d"
     KEYCHRON = "keychron"
+    FEATHERLITE = "featherlite"
+    PEPPERFRY = "pepperfry"
 
 
 def detect_platform(url: str) -> Platform:
@@ -60,6 +62,8 @@ def detect_platform(url: str) -> Platform:
         return Platform.FLIPKART
     if "myntra." in host:
         return Platform.MYNTRA
+    if "pepperfry." in host:
+        return Platform.PEPPERFRY
     if "healthkart." in host:
         return Platform.HEALTHKART
     if "truebasics." in host:
@@ -83,6 +87,12 @@ def detect_platform(url: str) -> Platform:
     # store would look undetectable.
     if "keychron.in" in host:
         return Platform.KEYCHRON
+    # Also matched by hostname: featherlitestore.com is WooCommerce on
+    # WordPress.com, whose edge answers 403 to uncached /product/ and
+    # /wp-json/ requests often enough that the HTML probe below would
+    # regularly make the store look undetectable.
+    if "featherlitestore.com" in host:
+        return Platform.FEATHERLITE
 
     # Shopify probe via the public JSON API endpoint
     handle = parsed.path.rstrip("/").split("/")[-1]
@@ -100,7 +110,7 @@ def detect_platform(url: str) -> Platform:
         f"Could not detect platform for URL: {url}. "
         "Supported platforms: Amazon, Flipkart, Shopify, Myntra, HealthKart, "
         "TrueBasics, The Whole Truth, Nutrabay, Robu, WOL3D, Meckeys, StacksKB, "
-        "Hydrotech 3D, Keychron India."
+        "Hydrotech 3D, Keychron India, Featherlite, Pepperfry."
     )
 
 
@@ -167,6 +177,7 @@ def get_scraper(url: str, headless: bool | None = None):
     from .healthkart import HealthKartScraper
     from .myntra import MyntraScraper
     from .nutrabay import NutrabayScraper
+    from .pepperfry import PepperfryScraper
     from .shopify import ShopifyScraper
     from .thewholetruth import TheWholeTruthScraper
     from .wix import WixScraper
@@ -192,11 +203,14 @@ def get_scraper(url: str, headless: bool | None = None):
         return TheWholeTruthScraper(**kwargs), platform.value
     elif platform == Platform.NUTRABAY:
         return NutrabayScraper(**kwargs), platform.value
+    elif platform == Platform.PEPPERFRY:
+        return PepperfryScraper(**kwargs), platform.value
     elif platform in (
         Platform.ROBU,
         Platform.WOL3D,
         Platform.MECKEYS,
         Platform.STACKSKB,
+        Platform.FEATHERLITE,
     ):
         return WooCommerceScraper(**kwargs), platform.value
     elif platform == Platform.KEYCHRON:
