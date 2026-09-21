@@ -92,15 +92,14 @@ class AmazonScraper(BaseScraper):
 
         # Image
         image_url: str | None = None
-        img_match = re.search(
-            r'id=["\']landingImage["\'][^>]+data-old-hires=["\']([^"\']+)["\']', html
-        )
-        if not img_match:
-            img_match = re.search(
-                r'id=["\']landingImage["\'][^>]+src=["\']([^"\']+)["\']', html
-            )
-        if img_match:
-            image_url = img_match.group(1)
+        tag_match = re.search(r"<img\b[^>]*\bid=[\"']landingImage[\"'][^>]*>", html)
+        if tag_match:
+            img_tag = tag_match.group(0)
+            attr_match = re.search(r'data-old-hires=["\']([^"\']+)["\']', img_tag)
+            if not attr_match:
+                attr_match = re.search(r'src=["\']([^"\']+)["\']', img_tag)
+            if attr_match:
+                image_url = attr_match.group(1)
 
         currency = "INR" if "amazon.in" in url else "USD"
 
