@@ -22,6 +22,42 @@ _REQUESTS_HEADERS = {
     "Upgrade-Insecure-Requests": "1",
 }
 
+_A_PRICE_OPEN_RE = re.compile(r'<span\b[^>]*\bclass="(a-price(?:\s[^"]*)?)"[^>]*>')
+_OFFSCREEN_RE = re.compile(r'class="a-offscreen">\s*([^<]*?)\s*</span>')
+_WHOLE_RE = re.compile(r'class="a-price-whole">\s*([\d,]+)')
+_FRACTION_RE = re.compile(r'class="a-price-fraction">\s*(\d+)')
+
+
+def _extract_price_text(html: str) -> str | None:
+    """
+    Return the buy-box price text from an Amazon product page.
+
+    Prefers the `.priceToPay` element, then any `.a-price` that is not an
+    `.a-text-price` (the struck-through M.R.P.). Amazon sometimes leaves the
+    `.a-offscreen` text blank and renders only `.a-price-whole`, so that is
+    used as a fallback within each element.
+    """
+    opens = list(_A_PRICE_OPEN_RE.finditer(html))
+    candidates = []
+    for i, m in enumerate(opens):
+        classes = m.group(1).split()
+        if "a-text-price" in classes:
+            continue
+        end = opens[i + 1].start() if i + 1 < len(opens) else m.end() + 1000
+        body = html[m.end() : min(end, m.end() + 1000)]
+        candidates.append(("priceToPay" not in classes, body))
+    candidates.sort(key=lambda c: c[0])
+
+    for _, body in candidates:
+        offscreen = _OFFSCREEN_RE.search(body)
+        if offscreen and offscreen.group(1):
+            return offscreen.group(1)
+        whole = _WHOLE_RE.search(body)
+        if whole:
+            fraction = _FRACTION_RE.search(body)
+            return whole.group(1) + ("." + fraction.group(1) if fraction else "")
+    return None
+
 
 class AmazonScraper(BaseScraper):
     """
@@ -31,9 +67,8 @@ class AmazonScraper(BaseScraper):
     1. Try requests library with browser user-agent (fast, no browser overhead).
     2. Fall back to Playwright if requests fails (CAPTCHA, JS-rendered content, etc.).
 
-    Price extraction order:
-      1. .a-price .a-offscreen  — full formatted price string (most reliable)
-      2. .a-price-whole + .a-price-fraction combined
+    Price extraction: see _extract_price_text — .priceToPay first, never the
+    .a-text-price M.R.P., with .a-price-whole as fallback for blank .a-offscreen.
 
     Raises ScraperError if a CAPTCHA page is detected or required
     elements are not found.
@@ -71,11 +106,7 @@ class AmazonScraper(BaseScraper):
         if not name:
             raise ScraperError("Product title not found in Amazon requests response")
 
-        # Price: prefer .a-offscreen
-        price_raw: str | None = None
-        offscreen_match = re.search(r'class="a-offscreen">(.*?)</span>', html)
-        if offscreen_match:
-            price_raw = offscreen_match.group(1).strip()
+        price_raw = _extract_price_text(html)
         if not price_raw:
             raise ScraperError("Price element not found in Amazon requests response")
         price = self._parse_price(price_raw)
@@ -143,18 +174,7 @@ class AmazonScraper(BaseScraper):
                     title_el.inner_text().strip() if title_el else page.title().strip()
                 )
 
-                price_raw: str | None = None
-                offscreen = page.query_selector(".a-price .a-offscreen")
-                if offscreen:
-                    price_raw = offscreen.inner_text().strip()
-                else:
-                    whole = page.query_selector(".a-price-whole")
-                    frac = page.query_selector(".a-price-fraction")
-                    if whole:
-                        price_raw = whole.inner_text().strip().rstrip(".")
-                        if frac:
-                            price_raw += "." + frac.inner_text().strip()
-
+                price_raw = _extract_price_text(page.content())
                 if not price_raw:
                     raise ScraperError("Price element not found on Amazon page")
 
