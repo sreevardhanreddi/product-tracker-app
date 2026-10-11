@@ -3,6 +3,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
 
+# A number with optional thousands separators and decimals: 1,29,999.00 / 19.99
+_PRICE_NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
 
 @dataclass
 class ScrapedProduct:
@@ -38,10 +41,14 @@ class BaseScraper(ABC):
 
     def _parse_price(self, raw: str) -> float:
         """
-        Strip currency symbols, commas, and whitespace, then parse as float.
-        Handles formats like ₹1,299.00 → 1299.0 and $19.99 → 19.99
+        Parse the first number in the text as the price.
+        Handles formats like ₹1,299.00 → 1299.0, $19.99 → 19.99, Rs.499 → 499.0
+
+        Only the first number is used: price blocks often hold the sale price,
+        the MRP and a discount together ("₹1,729 ₹2,399 28% OFF"), and joining
+        all their digits produced prices like 17292399172928.
         """
-        cleaned = re.sub(r"[^\d.]", "", raw.replace(",", ""))
-        if not cleaned:
+        match = _PRICE_NUMBER_RE.search(raw)
+        if not match:
             raise ScraperError(f"Could not parse price from: {raw!r}")
-        return float(cleaned)
+        return float(match.group(0).replace(",", ""))

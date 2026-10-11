@@ -67,6 +67,24 @@ def alerts_enabled_for(product: Product, link: ProductLink | None = None) -> boo
     return True
 
 
+# Browser fallbacks read prices from rendered page text, which can pick up the
+# wrong number (MRP, a "28% OFF" badge, or several prices glued together). A
+# jump this large against the last good price is a misread, not a price change,
+# and saving it would also fire a bogus price-change alert.
+_MAX_BROWSER_PRICE_RATIO = 5.0
+
+
+def _implausible_browser_price(data, previous_price: float | None) -> bool:
+    if data.scrape_method != "browser":
+        return False
+    if data.price <= 0:
+        return True
+    if not previous_price:
+        return False
+    ratio = data.price / previous_price
+    return ratio > _MAX_BROWSER_PRICE_RATIO or ratio < 1 / _MAX_BROWSER_PRICE_RATIO
+
+
 def check_product_link_price(
     product_link_id: int, session: Session, headless: bool | None = None
 ) -> PriceHistory | None:
@@ -98,6 +116,16 @@ def check_product_link_price(
     # Compare against the last known in-stock price so out-of-stock scrapes
     # (which may carry stale or placeholder prices) never pollute the baseline.
     previous_price = link.last_in_stock_price
+
+    if _implausible_browser_price(data, previous_price):
+        logger.warning(
+            "Discarding implausible browser price | link_id=%d old=%.2f new=%.2f raw=%r",
+            link.id,
+            previous_price,
+            data.price,
+            data.raw_price_text,
+        )
+        return None
 
     history = PriceHistory(
         product_id=product.id,

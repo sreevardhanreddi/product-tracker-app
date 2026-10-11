@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import time
@@ -27,6 +28,11 @@ _PRICE_SELECTORS = [
     ".price",
     "[class*='price']",
 ]
+
+_LD_JSON_RE = re.compile(
+    r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+    re.IGNORECASE | re.DOTALL,
+)
 
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -297,12 +303,21 @@ class ShopifyScraper(BaseScraper):
                 if not name:
                     name = page.title().strip()
 
-                price_raw: str | None = None
-                for sel in _PRICE_SELECTORS:
-                    el = page.query_selector(sel)
-                    if el:
-                        price_raw = el.inner_text().strip()
-                        break
+                # The theme's price block mixes sale price, MRP and discount
+                # text, so prefer the variant's schema.org offer when present.
+                offer = self._select_ld_json_offer(
+                    self._extract_ld_json_offers(page.content()),
+                    self._extract_variant_id(url),
+                )
+                ld_price = offer.get("price") if offer else None
+
+                price_raw: str | None = str(ld_price) if ld_price else None
+                if not price_raw:
+                    for sel in _PRICE_SELECTORS:
+                        el = page.query_selector(sel)
+                        if el:
+                            price_raw = el.inner_text().strip()
+                            break
                 if not price_raw:
                     raise ScraperError("Price not found on Shopify page")
 
@@ -316,10 +331,16 @@ class ShopifyScraper(BaseScraper):
                 image_url = img_el.get_attribute("src") if img_el else None
 
                 in_stock = True
+                availability = str((offer or {}).get("availability") or "").lower()
                 add_btn = page.query_selector(
                     "button[name='add'], .product-form__submit, [data-add-to-cart]"
                 )
-                if add_btn:
+                if availability:
+                    in_stock = (
+                        "outofstock" not in availability
+                        and "soldout" not in availability
+                    )
+                elif add_btn:
                     btn_text = add_btn.inner_text().strip().lower()
                     if (
                         add_btn.is_disabled()
@@ -340,6 +361,55 @@ class ShopifyScraper(BaseScraper):
                 )
             finally:
                 browser.close()
+
+    @staticmethod
+    def _extract_ld_json_offers(html: str) -> list[dict]:
+        """
+        Collect schema.org offers from the page's Product blocks.
+
+        Themes emit either one Product with `offers` (dict or list), or a
+        ProductGroup whose `hasVariant` entries each carry their own offer.
+        """
+        offers: list[dict] = []
+
+        def add_offers(product: dict) -> None:
+            value = product.get("offers")
+            for offer in value if isinstance(value, list) else [value]:
+                if isinstance(offer, dict):
+                    offers.append(offer)
+
+        for match in _LD_JSON_RE.finditer(html):
+            try:
+                data = json.loads(match.group(1).strip())
+            except json.JSONDecodeError:
+                continue
+            blocks = data if isinstance(data, list) else [data]
+            for block in blocks:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("@type") == "Product":
+                    add_offers(block)
+                elif block.get("@type") == "ProductGroup":
+                    for variant in block.get("hasVariant") or []:
+                        if isinstance(variant, dict):
+                            add_offers(variant)
+        return offers
+
+    @staticmethod
+    def _select_ld_json_offer(
+        offers: list[dict], variant_id: str | None
+    ) -> dict | None:
+        """Pick the offer for the linked variant, else the first (default) one."""
+        if not offers:
+            return None
+        if variant_id:
+            marker = f"variant={variant_id}"
+            for offer in offers:
+                if marker in str(offer.get("@id") or "") or marker in str(
+                    offer.get("url") or ""
+                ):
+                    return offer
+        return offers[0]
 
     @staticmethod
     def _extract_variant_id(url: str) -> str | None:
