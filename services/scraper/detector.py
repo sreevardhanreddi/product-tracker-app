@@ -142,7 +142,8 @@ def _probe_shopify_json(probe_url: str) -> bool:
         except Exception:
             return False
 
-    return False
+    # Every attempt was throttled, but the throttle response is Shopify's own.
+    return _served_by_shopify(r)
 
 
 def _probe_shopify_html(url: str) -> bool:
@@ -158,17 +159,40 @@ def _probe_shopify_html(url: str) -> bool:
         return False
 
     if r.status_code != 200:
-        return False
+        return _served_by_shopify(r)
 
     body = r.text
     return "cdn.shopify.com" in body or "Shopify.theme" in body
 
 
-def get_scraper(url: str, headless: bool | None = None):
+def _served_by_shopify(r) -> bool:
+    """
+    True if the response came from Shopify's storefront, whatever its status.
+
+    Shopify throttles the .json API and the storefront HTML together, so when
+    a store is rate-limiting us both probes can come back 429 and detection
+    would fail outright. Shopify's edge still stamps those responses, and a
+    proxied 429 (e.g. Cloudflare in front) passes the headers through.
+    """
+    if r is None:
+        return False
+    headers = r.headers
+    if headers.get("powered-by", "").lower() == "shopify":
+        return True
+    return any(
+        key.lower() == "x-shopid" or key.lower().startswith(("x-shopify-", "shopify-"))
+        for key in headers
+    )
+
+
+def get_scraper(url: str, headless: bool | None = None, platform: str | None = None):
     """
     Factory: detect the platform for a URL and return (scraper_instance, platform_str).
     Imports are deferred to avoid heavy playwright import at module load time.
     Pass headless=False to override the .env setting (e.g. for debug runs).
+    Pass the link's stored platform to skip detection: re-probing on every
+    scrape spends requests a rate-limited store won't answer, and a throttled
+    probe turns into "Could not detect platform" before the scrape even runs.
     """
     from config import settings
 
@@ -183,7 +207,12 @@ def get_scraper(url: str, headless: bool | None = None):
     from .wix import WixScraper
     from .woocommerce import WooCommerceScraper
 
-    platform = detect_platform(url)
+    try:
+        platform = Platform(platform) if platform else detect_platform(url)
+    except ValueError:
+        if not platform:
+            raise
+        platform = detect_platform(url)
     kwargs = {
         "headless": settings.PLAYWRIGHT_HEADLESS if headless is None else headless,
         "timeout_ms": settings.PLAYWRIGHT_TIMEOUT_MS,

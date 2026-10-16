@@ -107,7 +107,7 @@ def check_product_link_price(
         return None
 
     try:
-        scraper, _ = get_scraper(link.url, headless=headless)
+        scraper, _ = get_scraper(link.url, headless=headless, platform=link.platform)
         data = scraper.scrape(link.url)
     except Exception as e:
         logger.error(f"Scrape failed for link {product_link_id} ({link.url}): {e}")
