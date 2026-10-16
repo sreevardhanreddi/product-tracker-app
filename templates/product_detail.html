@@ -138,6 +138,7 @@
   </main>
 
   {% include "_footer.html" %}
+  <script src="/static/browser_fetch.js"></script>
 
   <script>
     const productId = Number({{ product_id | tojson }});
@@ -487,11 +488,7 @@
       btn.textContent = "Adding…";
       btn.disabled = true;
       try {
-        const res = await fetch(`/api/products/${currentProductId}/links`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-        });
+        const res = await postTrackedUrl(`/api/products/${currentProductId}/links`, { url });
         if (!res.ok) {
           const err = await res.json();
           alert("Error: " + (err.detail || JSON.stringify(err)));
@@ -501,6 +498,13 @@
         renderProduct(selectedProduct);
         renderProductLinks(selectedProduct);
         await loadChart(selectedProduct.id);
+        populateShopifyLinksFromBrowser(currentProductId).then(async (product) => {
+          if (!product || selectedProduct?.id !== product.id) return;
+          selectedProduct = product;
+          renderProduct(selectedProduct);
+          renderProductLinks(selectedProduct);
+          await loadChart(selectedProduct.id);
+        });
       } finally {
         btn.textContent = "+ Add";
         btn.disabled = false;
@@ -567,50 +571,6 @@
       } finally {
         btn.disabled = false;
       }
-    }
-
-    // Shopify serves /products/{handle}.js with Access-Control-Allow-Origin: *,
-    // so the browser can read it directly. Other platforms send no CORS headers
-    // (and Amazon/Pepperfry bot-block anyway), so there's no browser fallback.
-    async function fetchShopifyPriceInBrowser(link) {
-      const url = new URL(link.url);
-      const variantId = url.searchParams.get("variant");
-      const handlePath = url.pathname.replace(/\/+$/, "");
-      const res = await fetch(`${url.origin}${handlePath}.js`, { headers: { Accept: "application/json" } });
-      if (!res.ok) throw new Error(`${res.status} from ${url.origin}${handlePath}.js`);
-      const data = await res.json();
-      const variants = data.variants || [];
-      const variant = (variantId && variants.find((v) => String(v.id) === variantId)) || variants[0];
-      if (!variant) throw new Error("No variants in Shopify .js response");
-      // .js prices are in minor units (paise): 139900 => 1399.00
-      const price = Number(variant.price) / 100;
-      const image = variant.featured_image?.src || data.featured_image || null;
-      return {
-        name: data.title,
-        price,
-        currency: link.currency || "INR",
-        in_stock: Boolean(variant.available),
-        image_url: image && image.startsWith("//") ? `https:${image}` : image,
-        raw_price_text: String(variant.price),
-      };
-    }
-
-    async function syncLinkFromBrowser(currentProductId, link) {
-      if (link?.platform !== "shopify") {
-        throw new Error(`No browser fallback for platform "${link?.platform}" (no CORS)`);
-      }
-      const scraped = await fetchShopifyPriceInBrowser(link);
-      console.log("Browser fetch :", scraped);
-      const res = await fetch(`/api/products/${currentProductId}/links/${link.id}/sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(scraped),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(`Sync rejected: ${err.detail || res.status}`);
-      }
-      return res.json();
     }
 
     async function debugLink(event, currentProductId, linkId) {

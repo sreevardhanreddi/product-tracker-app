@@ -23,20 +23,40 @@ from services.price_service import (
     refresh_product_cache,
 )
 from services.scraper.base import ScrapedProduct
-from services.scraper.detector import detect_platform
+from services.scraper.detector import Platform, detect_platform
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _payload_links(payload: ProductCreate) -> list[tuple[str, int]]:
+def _payload_links(payload: ProductCreate) -> list[tuple[str, int, str | None]]:
     if payload.links:
-        links: list[tuple[str, int]] = []
+        links: list[tuple[str, int, str | None]] = []
         for link in payload.links:
             interval = link.check_interval_minutes or payload.check_interval_minutes
-            links.append((link.url, interval))
+            links.append((link.url, interval, link.platform))
         return links
-    return [(payload.url, payload.check_interval_minutes)] if payload.url else []
+    if not payload.url:
+        return []
+    return [(payload.url, payload.check_interval_minutes, payload.platform)]
+
+
+def _resolve_platform(url: str, hint: str | None) -> Platform:
+    """
+    Detect the platform, falling back to the client's hint.
+
+    A rate-limiting Shopify store can answer every server probe with 429; the
+    UI then confirms Shopify from the user's browser and resends with a hint.
+    """
+    try:
+        return detect_platform(url)
+    except ValueError as e:
+        if hint:
+            logger.info(
+                "Platform detection failed, using client hint %r | %s", hint, url
+            )
+            return Platform(hint)
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.post("/products", response_model=ProductRead, status_code=201)
@@ -46,7 +66,7 @@ def create_product(payload: ProductCreate, session: Session = Depends(get_sessio
     Persist first, then enqueue background checks for each link.
     """
     link_inputs = _payload_links(payload)
-    unique_urls = {url for url, _ in link_inputs}
+    unique_urls = {url for url, _, _ in link_inputs}
     if len(unique_urls) != len(link_inputs):
         raise HTTPException(
             status_code=422, detail="Duplicate URLs in request payload."
@@ -54,7 +74,7 @@ def create_product(payload: ProductCreate, session: Session = Depends(get_sessio
     now = datetime.utcnow()
 
     link_rows = []
-    for url, interval in link_inputs:
+    for url, interval, hint in link_inputs:
         existing = session.exec(
             select(ProductLink).where(ProductLink.url == url)
         ).first()
@@ -63,10 +83,7 @@ def create_product(payload: ProductCreate, session: Session = Depends(get_sessio
                 status_code=409,
                 detail=f"This URL is already being tracked: {url}",
             )
-        try:
-            platform = detect_platform(url)
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
+        platform = _resolve_platform(url, hint)
         link_rows.append({"url": url, "interval": interval, "platform": platform.value})
 
     first = link_rows[0]
@@ -223,10 +240,7 @@ def add_product_link(
             status_code=409, detail=f"URL already tracked: {payload.url}"
         )
 
-    try:
-        platform = detect_platform(payload.url)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    platform = _resolve_platform(payload.url, payload.platform)
 
     now = datetime.utcnow()
     link = ProductLink(

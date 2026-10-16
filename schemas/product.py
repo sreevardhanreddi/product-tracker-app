@@ -1,12 +1,17 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
+
+# Only Shopify can be confirmed from the user's browser (its product .js is
+# CORS-open), so it's the only hint the server accepts when detection fails.
+PlatformHint = Literal["shopify"]
 
 
 class ProductLinkCreate(BaseModel):
     url: str
     check_interval_minutes: Optional[int] = None
+    platform: Optional[PlatformHint] = None
 
 
 class ClientPriceSync(BaseModel):
@@ -53,6 +58,8 @@ class ProductCreate(BaseModel):
     url: Optional[str] = None
     # New multi-link input
     links: Optional[List[ProductLinkCreate]] = None
+    # Platform hint for `url`, used only if server-side detection fails.
+    platform: Optional[PlatformHint] = None
 
     name: Optional[str] = None
     target_price: Optional[float] = None
