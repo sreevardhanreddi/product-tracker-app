@@ -75,9 +75,12 @@ _MAX_BROWSER_PRICE_RATIO = 5.0
 
 
 def _implausible_browser_price(data, previous_price: float | None) -> bool:
-    # "client" prices come from the user's browser via the debug sync endpoint;
-    # they're unverified input, so they get the same sanity check.
-    if data.scrape_method not in ("browser", "client"):
+    # Only text-scraped prices are checked. "client" prices come from Shopify's
+    # structured .js data via the browser sync, like "requests" prices from its
+    # .json — and they must be able to overwrite a baseline poisoned by an old
+    # misread (e.g. 17292399172928), which this check would otherwise protect
+    # forever by rejecting every correct price against it.
+    if data.scrape_method != "browser":
         return False
     if data.price <= 0:
         return True
