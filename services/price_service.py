@@ -75,7 +75,9 @@ _MAX_BROWSER_PRICE_RATIO = 5.0
 
 
 def _implausible_browser_price(data, previous_price: float | None) -> bool:
-    if data.scrape_method != "browser":
+    # "client" prices come from the user's browser via the debug sync endpoint;
+    # they're unverified input, so they get the same sanity check.
+    if data.scrape_method not in ("browser", "client"):
         return False
     if data.price <= 0:
         return True
@@ -111,6 +113,19 @@ def check_product_link_price(
         logger.error(f"Scrape failed for link {product_link_id} ({link.url}): {e}")
         return None
 
+    return record_scraped_price(link, product, data, session)
+
+
+def record_scraped_price(
+    link: ProductLink, product: Product, data, session: Session
+) -> PriceHistory | None:
+    """
+    Save one scrape result: price history, link/product cache, and alerts.
+
+    Shared by the server-side scrape and the debug endpoint that accepts a
+    price the user's browser fetched. Returns None if the price is discarded
+    as implausible.
+    """
     now = datetime.utcnow()
     previous_in_stock = link.in_stock
     # Compare against the last known in-stock price so out-of-stock scrapes

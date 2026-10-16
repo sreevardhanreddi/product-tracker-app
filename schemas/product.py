@@ -9,6 +9,17 @@ class ProductLinkCreate(BaseModel):
     check_interval_minutes: Optional[int] = None
 
 
+class ClientPriceSync(BaseModel):
+    """A price the user's browser fetched when the server-side scrape failed."""
+
+    name: Optional[str] = None
+    price: float = Field(gt=0)
+    currency: str = "INR"
+    in_stock: bool = True
+    image_url: Optional[str] = None
+    raw_price_text: Optional[str] = None
+
+
 class ProductLinkUpdate(BaseModel):
     check_interval_minutes: Optional[int] = None
     is_active: Optional[bool] = None

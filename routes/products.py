@@ -10,13 +10,19 @@ from sqlmodel import Session, select
 from database import get_session
 from models import Product, ProductLink
 from schemas.product import (
+    ClientPriceSync,
     ProductCreate,
     ProductLinkCreate,
     ProductListResponse,
     ProductRead,
     ProductUpdate,
 )
-from services.price_service import check_product_link_price, refresh_product_cache
+from services.price_service import (
+    check_product_link_price,
+    record_scraped_price,
+    refresh_product_cache,
+)
+from services.scraper.base import ScrapedProduct
 from services.scraper.detector import detect_platform
 
 logger = logging.getLogger(__name__)
@@ -300,6 +306,42 @@ def manual_check_link(
     history = check_product_link_price(link_id, session)
     if history is None:
         raise HTTPException(status_code=502, detail="Scrape failed — check server logs")
+
+    session.refresh(product)
+    return product
+
+
+@router.post("/products/{product_id}/links/{link_id}/sync", response_model=ProductRead)
+def sync_link_price_from_client(
+    product_id: int,
+    link_id: int,
+    payload: ClientPriceSync,
+    session: Session = Depends(get_session),
+):
+    """Record a price fetched by the browser after the server-side scrape failed."""
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    link = session.get(ProductLink, link_id)
+    if not link or link.product_id != product_id:
+        raise HTTPException(status_code=404, detail="Product link not found")
+
+    data = ScrapedProduct(
+        name=payload.name or "",
+        price=payload.price,
+        currency=payload.currency,
+        in_stock=payload.in_stock,
+        image_url=payload.image_url,
+        raw_price_text=payload.raw_price_text,
+        scrape_method="client",
+    )
+    history = record_scraped_price(link, product, data, session)
+    if history is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Price discarded as implausible against the last known price",
+        )
 
     session.refresh(product)
     return product

@@ -569,6 +569,50 @@
       }
     }
 
+    // Shopify serves /products/{handle}.js with Access-Control-Allow-Origin: *,
+    // so the browser can read it directly. Other platforms send no CORS headers
+    // (and Amazon/Pepperfry bot-block anyway), so there's no browser fallback.
+    async function fetchShopifyPriceInBrowser(link) {
+      const url = new URL(link.url);
+      const variantId = url.searchParams.get("variant");
+      const handlePath = url.pathname.replace(/\/+$/, "");
+      const res = await fetch(`${url.origin}${handlePath}.js`, { headers: { Accept: "application/json" } });
+      if (!res.ok) throw new Error(`${res.status} from ${url.origin}${handlePath}.js`);
+      const data = await res.json();
+      const variants = data.variants || [];
+      const variant = (variantId && variants.find((v) => String(v.id) === variantId)) || variants[0];
+      if (!variant) throw new Error("No variants in Shopify .js response");
+      // .js prices are in minor units (paise): 139900 => 1399.00
+      const price = Number(variant.price) / 100;
+      const image = variant.featured_image?.src || data.featured_image || null;
+      return {
+        name: data.title,
+        price,
+        currency: link.currency || "INR",
+        in_stock: Boolean(variant.available),
+        image_url: image && image.startsWith("//") ? `https:${image}` : image,
+        raw_price_text: String(variant.price),
+      };
+    }
+
+    async function syncLinkFromBrowser(currentProductId, link) {
+      if (link?.platform !== "shopify") {
+        throw new Error(`No browser fallback for platform "${link?.platform}" (no CORS)`);
+      }
+      const scraped = await fetchShopifyPriceInBrowser(link);
+      console.log("Browser fetch :", scraped);
+      const res = await fetch(`/api/products/${currentProductId}/links/${link.id}/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(scraped),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(`Sync rejected: ${err.detail || res.status}`);
+      }
+      return res.json();
+    }
+
     async function debugLink(event, currentProductId, linkId) {
       event.stopPropagation();
       const btn = event.currentTarget;
@@ -578,15 +622,28 @@
       console.group(`[Debug] Tracking link ${linkId} for product ${currentProductId}`);
       console.log("POST", `/api/products/${currentProductId}/links/${linkId}/check`);
       try {
-        const res = await fetch(`/api/products/${currentProductId}/links/${linkId}/check`, { method: "POST" });
-        if (!res.ok) {
-          const err = await res.json();
-          console.error("Scrape failed:", err);
-          btn.textContent = "❌";
-          setTimeout(() => { btn.innerHTML = originalHTML; btn.disabled = false; }, 2000);
-          return;
+        let product;
+        let res = null;
+        try {
+          res = await fetch(`/api/products/${currentProductId}/links/${linkId}/check`, { method: "POST" });
+        } catch (err) {
+          console.error("Server check request error:", err);
         }
-        const product = await res.json();
+        if (res && res.ok) {
+          product = await res.json();
+        } else {
+          if (res) console.error("Scrape failed:", await res.json().catch(() => res.status));
+          const link = (selectedProduct?.links || []).find((l) => l.id === linkId);
+          console.log("Falling back to browser fetch for", link?.url);
+          try {
+            product = await syncLinkFromBrowser(currentProductId, link);
+          } catch (err) {
+            console.error("Browser fallback failed:", err);
+            btn.textContent = "❌";
+            setTimeout(() => { btn.innerHTML = originalHTML; btn.disabled = false; }, 2000);
+            return;
+          }
+        }
         const link = (product.links || []).find((l) => l.id === linkId);
         if (link) {
           console.log("Platform      :", link.platform);
