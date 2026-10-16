@@ -152,6 +152,51 @@ class ShopifyScraper(BaseScraper):
         return self._scrape_playwright(url)
 
     def _scrape_requests(self, url: str) -> ScrapedProduct:
+        try:
+            return self._scrape_requests_at(url)
+        except requests.HTTPError as e:
+            if e.response is None or e.response.status_code != 404:
+                raise
+            moved = self._resolve_moved_url(url)
+            if not moved:
+                raise
+            logger.info("Shopify product moved %s -> %s", url, moved)
+            return self._scrape_requests_at(moved)
+
+    @staticmethod
+    def _resolve_moved_url(url: str) -> str | None:
+        """
+        Follow the storefront's redirect for a renamed product handle.
+
+        Shopify's URL redirects apply to the HTML page only: after a handle
+        rename (or a domain move) the old /products/{old}.json 404s while the
+        page itself 301s to /products/{new}. Without this, the scrape drops to
+        the browser, which lands on the new page with no ?variant= and reads
+        the first variant's price.
+        """
+        try:
+            r = requests.get(
+                url, headers=_HTML_HEADERS, timeout=15, allow_redirects=True
+            )
+            r.raise_for_status()
+        except Exception as e:
+            logger.info("Could not follow redirect for %s: %s", url, e)
+            return None
+
+        original, final = urlparse(url), urlparse(r.url)
+        if (final.hostname, final.path.rstrip("/")) == (
+            original.hostname,
+            original.path.rstrip("/"),
+        ):
+            return None
+        if "/products/" not in final.path:
+            return None
+        # Keep ?variant= if the redirect dropped it.
+        if not final.query and original.query:
+            final = final._replace(query=original.query)
+        return final.geturl()
+
+    def _scrape_requests_at(self, url: str) -> ScrapedProduct:
         parsed = urlparse(url)
         handle = parsed.path.rstrip("/").split("/")[-1]
         variant_id = self._extract_variant_id(url)
