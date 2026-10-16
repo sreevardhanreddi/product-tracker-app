@@ -163,31 +163,46 @@ class TheWholeTruthScraper(BaseScraper):
         return min(float(match) for match in matches)
 
     def _extract_variant_data(self, html: str, sku_id: str) -> dict | None:
-        match = re.search(
-            rf'\\"id\\":\\"{re.escape(sku_id)}\\".*?\\"title\\":\\"(?P<title>[^"]*)\\".*?'
-            rf'\\"sku\\":\\"(?P<sku>[^"]*)\\".*?'
-            rf'\\"allow_backorder\\":(?P<allow_backorder>true|false).*?'
-            rf'\\"manage_inventory\\":(?P<manage_inventory>true|false).*?'
-            rf'\\"inventory\\":(?P<inventory>-?\d+).*?'
-            rf'\\"primary_image\\":\\"(?P<primary_image>[^"]*)\\"',
-            html,
-            re.DOTALL,
-        )
-        if not match:
-            return None
+        """
+        Read the selected variant from the page's RSC payload (escaped JSON).
 
-        primary_image = match.group("primary_image").strip()
-        if primary_image and not primary_image.startswith("http"):
-            primary_image = primary_image.lstrip("/")
+        The search is bounded to this variant's own object, up to the next
+        variant, so a key missing here can't be satisfied by a later
+        variant's or product's data (the payload also carries stale Dukaan
+        records with "inventory":0).
+        """
+        start = re.search(
+            rf'\\"id\\":\\"{re.escape(sku_id)}\\",\\"title\\":\\"', html
+        )
+        if not start:
+            return None
+        next_variant = html.find('\\"id\\":\\"variant_', start.end())
+        segment = html[start.start() : next_variant if next_variant != -1 else None]
+
+        def field(pattern: str) -> str | None:
+            match = re.search(rf'\\"{pattern}', segment)
+            return match.group(1) if match else None
+
+        def flag(key: str) -> bool | None:
+            value = field(rf'{key}\\":(true|false)')
+            return None if value is None else value == "true"
+
+        inventory = field(r'inventory\\":(-?\d+)')
+        image = field(r'variant_image\\":\[\{[^{}]*?\\"url\\":\\"([^"\\]+)')
+        if image and not image.startswith("http"):
+            image = f"https://media.thewholetruthfoods.com/{image.lstrip('/')}"
 
         return {
             "id": sku_id,
-            "title": match.group("title").strip() or None,
-            "sku": match.group("sku").strip() or None,
-            "allow_backorder": match.group("allow_backorder") == "true",
-            "manage_inventory": match.group("manage_inventory") == "true",
-            "inventory": int(match.group("inventory")),
-            "image_url": primary_image or None,
+            "title": (field(r'title\\":\\"([^"\\]*)') or "").strip() or None,
+            "sku": field(r'sku\\":\\"([^"\\]*)'),
+            # What the storefront itself uses to show "Notify me" instead of
+            # "Add to cart"; the per-variant inventory count is no longer sent.
+            "force_oos": flag("force_oos"),
+            "allow_backorder": bool(flag("allow_backorder")),
+            "manage_inventory": flag("manage_inventory") is not False,
+            "inventory": int(inventory) if inventory is not None else None,
+            "image_url": image,
         }
 
     def _resolve_stock(
@@ -199,9 +214,12 @@ class TheWholeTruthScraper(BaseScraper):
         html: str,
     ) -> bool:
         if variant:
+            if variant["force_oos"] is not None:
+                return not variant["force_oos"]
             if not variant["manage_inventory"]:
                 return True
-            return variant["inventory"] > 0 or variant["allow_backorder"]
+            if variant["inventory"] is not None:
+                return variant["inventory"] > 0 or variant["allow_backorder"]
 
         offer = (
             self._select_offer(product_ld, selected_sku, variant_title)
