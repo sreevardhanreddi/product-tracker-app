@@ -171,9 +171,7 @@ class TheWholeTruthScraper(BaseScraper):
         variant's or product's data (the payload also carries stale Dukaan
         records with "inventory":0).
         """
-        start = re.search(
-            rf'\\"id\\":\\"{re.escape(sku_id)}\\",\\"title\\":\\"', html
-        )
+        start = re.search(rf'\\"id\\":\\"{re.escape(sku_id)}\\",\\"title\\":\\"', html)
         if not start:
             return None
         next_variant = html.find('\\"id\\":\\"variant_', start.end())
