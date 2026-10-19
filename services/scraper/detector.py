@@ -70,11 +70,6 @@ def detect_platform(url: str) -> Platform:
         return Platform.STACKSKB
     if "hydrotech3dchennai.com" in host:
         return Platform.HYDROTECH3D
-    # Matched by hostname rather than probed: keychron.in takes over a minute to
-    # answer a product request, so both probes below would time out and the
-    # store would look undetectable.
-    if "keychron.in" in host:
-        return Platform.KEYCHRON
     # Also matched by hostname: featherlitestore.com is WooCommerce on
     # WordPress.com, whose edge answers 403 to uncached /product/ and
     # /wp-json/ requests often enough that the HTML probe below would
