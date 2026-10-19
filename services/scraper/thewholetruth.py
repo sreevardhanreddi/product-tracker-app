@@ -2,9 +2,9 @@ import json
 import re
 from urllib.parse import parse_qs, urlparse
 
-import requests
 from playwright.sync_api import sync_playwright
 
+from . import http
 from .base import BaseScraper, ScrapedProduct, ScraperError
 
 _USER_AGENT = (
@@ -65,12 +65,7 @@ class TheWholeTruthScraper(BaseScraper):
         raise ScraperError(f"Page navigation failed: {last_error}")
 
     def _scrape_via_requests(self, url: str) -> ScrapedProduct:
-        headers = {
-            "User-Agent": _USER_AGENT,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-IN,en;q=0.9",
-        }
-        response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+        response = http.get(url)
         response.raise_for_status()
         result = self._build_from_html(response.text, url)
         result.scrape_method = "requests"

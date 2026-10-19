@@ -59,7 +59,6 @@ python-telegram-bot==22.7
 pytokens==0.4.1
 pyyaml==6.0.3
 redis==6.4.0
-requests==2.33.0
 rich==14.3.2
 rich-toolkit==0.19.4
 rignore==0.7.6

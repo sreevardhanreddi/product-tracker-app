@@ -4,9 +4,9 @@ import re
 import time
 from urllib.parse import parse_qs, urlparse
 
-import requests
 from playwright.sync_api import sync_playwright
 
+from . import http
 from .base import BaseScraper, ScrapedProduct, ScraperError
 
 _USER_AGENT = (
@@ -16,12 +16,9 @@ _USER_AGENT = (
 )
 
 _HEADERS = {
-    "User-Agent": _USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-IN,en;q=0.9",
+    **http.HTML_HEADERS,
     "Cache-Control": "no-cache",
     "Pragma": "no-cache",
-    "Upgrade-Insecure-Requests": "1",
 }
 
 _TITLE_SELECTORS = [
@@ -226,7 +223,13 @@ class WooCommerceScraper(BaseScraper):
             "verifying you are human",
             "needs to review the security",
             "cf-browser-verification",
-            "/cdn-cgi/challenge-platform/",
+            # Only the interactive challenge loads from /h/ and sets
+            # _cf_chl_opt. Sites on Bot Management also inject a passive
+            # /cdn-cgi/challenge-platform/scripts/jsd/main.js into every real
+            # page, so matching the bare prefix flagged wol3d.com's product
+            # page as a challenge and sent it to the browser.
+            "/cdn-cgi/challenge-platform/h/",
+            "_cf_chl_opt",
             "performing security verification",
             "security service to protect against malicious bots",
             "this page is displayed while the website verifies you are not a bot",
@@ -288,20 +291,10 @@ class WooCommerceScraper(BaseScraper):
         )
 
     def _fetch_html(self, url: str) -> str:
-        response = requests.get(
-            url,
-            headers=_HEADERS,
-            timeout=self.http_timeout,
-            allow_redirects=True,
-        )
-        if response.ok and not self._looks_like_cloudflare_html(response.text):
-            return response.text
-
-        curl_html = self._fetch_html_via_curl_cffi(url)
-        if curl_html and not self._looks_like_cloudflare_html(curl_html):
-            return curl_html
-
+        response = http.get(url, headers=_HEADERS, timeout=self.http_timeout)
         response.raise_for_status()
+        if self._looks_like_cloudflare_html(response.text):
+            raise ScraperError(f"Cloudflare challenge page for {url}")
         return response.text
 
     def _scrape_via_store_api(self, url: str) -> ScrapedProduct | None:
@@ -350,37 +343,11 @@ class WooCommerceScraper(BaseScraper):
 
     def _fetch_store_api_json(self, api_url: str, params: dict) -> list | dict | None:
         try:
-            response = requests.get(
+            response = http.get(
                 api_url,
                 params=params,
-                headers={
-                    **_HEADERS,
-                    "Accept": "application/json,text/plain,*/*",
-                },
+                headers={**_HEADERS, "Accept": http.JSON_HEADERS["Accept"]},
                 timeout=self.http_timeout,
-                allow_redirects=True,
-            )
-            if response.ok and not self._looks_like_cloudflare_html(response.text):
-                return response.json()
-        except Exception:
-            pass
-
-        try:
-            from curl_cffi import requests as curl_requests
-        except ImportError:
-            return None
-
-        try:
-            response = curl_requests.get(
-                api_url,
-                params=params,
-                headers={
-                    **_HEADERS,
-                    "Accept": "application/json,text/plain,*/*",
-                },
-                timeout=self.http_timeout,
-                allow_redirects=True,
-                impersonate="chrome",
             )
             response.raise_for_status()
             if self._looks_like_cloudflare_html(response.text):
@@ -391,22 +358,6 @@ class WooCommerceScraper(BaseScraper):
             # notice/error prepended to the body). Let the caller fall back to
             # ld+json / HTML parsing instead of aborting the requests path.
             return None
-
-    def _fetch_html_via_curl_cffi(self, url: str) -> str | None:
-        try:
-            from curl_cffi import requests as curl_requests
-        except ImportError:
-            return None
-
-        response = curl_requests.get(
-            url,
-            headers=_HEADERS,
-            timeout=self.http_timeout,
-            allow_redirects=True,
-            impersonate="chrome",
-        )
-        response.raise_for_status()
-        return response.text
 
     @staticmethod
     def _extract_variant_selectors(url: str) -> dict:

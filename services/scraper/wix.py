@@ -2,9 +2,9 @@ import html as html_lib
 import json
 import re
 
-import requests
 from playwright.sync_api import sync_playwright
 
+from . import http
 from .base import BaseScraper, ScrapedProduct, ScraperError
 
 _USER_AGENT = (
@@ -12,12 +12,6 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/122.0.0.0 Safari/537.36"
 )
-
-_HEADERS = {
-    "User-Agent": _USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-IN,en;q=0.9",
-}
 
 _TITLE_SELECTORS = [
     "[data-hook='product-title']",
@@ -105,12 +99,7 @@ class WixScraper(BaseScraper):
         raise ScraperError(f"Page navigation failed: {last_error}")
 
     def _scrape_via_requests(self, url: str) -> ScrapedProduct:
-        response = requests.get(
-            url,
-            headers=_HEADERS,
-            timeout=20,
-            allow_redirects=True,
-        )
+        response = http.get(url)
         response.raise_for_status()
         html = response.text
 

@@ -2,15 +2,7 @@ import time
 from enum import Enum
 from urllib.parse import urlparse
 
-from curl_cffi import requests as curl_requests
-
-# No User-Agent: the Chrome impersonation below sends one matching its TLS
-# fingerprint. Shopify's Cloudflare edge answers a plain python client's
-# fingerprint with 429, which made Shopify stores look undetectable.
-_PROBE_HEADERS = {
-    "Accept": "application/json,text/plain,*/*",
-    "Accept-Language": "en-IN,en;q=0.9",
-}
+from . import http
 
 # Shopify rate-limits its public endpoints per store. Detection runs once when
 # a link is added, so a transient 429 here is the difference between "product
@@ -114,13 +106,7 @@ def _probe_shopify_json(probe_url: str) -> bool:
     """GET /products/{handle}.json, retrying through rate-limit responses."""
     for attempt in range(_PROBE_ATTEMPTS):
         try:
-            r = curl_requests.get(
-                probe_url,
-                headers=_PROBE_HEADERS,
-                timeout=10,
-                allow_redirects=True,
-                impersonate="chrome",
-            )
+            r = http.get(probe_url, headers=http.JSON_HEADERS, timeout=10)
         except Exception:
             return False
 
@@ -146,13 +132,7 @@ def _probe_shopify_json(probe_url: str) -> bool:
 def _probe_shopify_html(url: str) -> bool:
     """Look for Shopify storefront markers in the product page HTML."""
     try:
-        r = curl_requests.get(
-            url,
-            headers={**_PROBE_HEADERS, "Accept": "text/html,application/xhtml+xml"},
-            timeout=15,
-            allow_redirects=True,
-            impersonate="chrome",
-        )
+        r = http.get(url, timeout=15)
     except Exception:
         return False
 

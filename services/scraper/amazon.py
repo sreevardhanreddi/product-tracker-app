@@ -1,8 +1,8 @@
 import re
 
-import requests
 from playwright.sync_api import sync_playwright
 
+from . import http
 from .base import BaseScraper, ScrapedProduct, ScraperError
 
 _BLOCKED_RESOURCE_TYPES = {"image", "font", "media", "stylesheet"}
@@ -12,15 +12,6 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0.0.0 Safari/537.36"
 )
-
-_REQUESTS_HEADERS = {
-    "User-Agent": _USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-IN,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-}
 
 _A_PRICE_OPEN_RE = re.compile(r'<span\b[^>]*\bclass="(a-price(?:\s[^"]*)?)"[^>]*>')
 _OFFSCREEN_RE = re.compile(r'class="a-offscreen">\s*([^<]*?)\s*</span>')
@@ -64,7 +55,7 @@ class AmazonScraper(BaseScraper):
     Scrapes Amazon product pages.
 
     Strategy:
-    1. Try requests library with browser user-agent (fast, no browser overhead).
+    1. Fetch the HTML with curl_cffi (Chrome fingerprint; fast, no browser).
     2. Fall back to Playwright if requests fails (CAPTCHA, JS-rendered content, etc.).
 
     Price extraction: see _extract_price_text — .priceToPay first, never the
@@ -82,9 +73,7 @@ class AmazonScraper(BaseScraper):
         return self._scrape_via_browser(url)
 
     def _scrape_via_requests(self, url: str) -> ScrapedProduct:
-        r = requests.get(
-            url, headers=_REQUESTS_HEADERS, timeout=20, allow_redirects=True
-        )
+        r = http.get(url)
         r.raise_for_status()
         html = r.text
 

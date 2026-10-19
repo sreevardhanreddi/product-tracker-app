@@ -3,6 +3,7 @@ import re
 
 from playwright.sync_api import sync_playwright
 
+from . import http
 from .base import BaseScraper, ScrapedProduct, ScraperError
 
 _USER_AGENT = (
@@ -10,12 +11,6 @@ _USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/122.0.0.0 Safari/537.36"
 )
-
-_HEADERS = {
-    "User-Agent": _USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-IN,en;q=0.9",
-}
 
 # Rendered selling price, e.g.
 #   <span class="text-xxl font-bold ...">₹13,999</span>
@@ -145,24 +140,8 @@ class PepperfryScraper(BaseScraper):
         )
 
     def _fetch_html(self, url: str) -> str:
-        # Deliberately no plain-`requests` attempt first: Akamai answers it 403
-        # every time, so trying would only add a round trip before the same
-        # impersonated fetch.
-        try:
-            from curl_cffi import requests as curl_requests
-        except ImportError as e:
-            raise ScraperError(
-                "curl_cffi is required to fetch Pepperfry (Akamai rejects "
-                "plain requests)"
-            ) from e
-
-        response = curl_requests.get(
-            url,
-            headers=_HEADERS,
-            timeout=30,
-            allow_redirects=True,
-            impersonate="chrome",
-        )
+        # Akamai 403s anything without a browser TLS fingerprint.
+        response = http.get(url, timeout=30)
         response.raise_for_status()
         return response.text
 
