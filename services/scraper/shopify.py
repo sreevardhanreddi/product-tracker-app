@@ -4,7 +4,8 @@ import re
 import time
 from urllib.parse import parse_qs, urlparse
 
-import requests
+from curl_cffi import requests as curl_requests
+from curl_cffi.requests.exceptions import HTTPError
 from playwright.sync_api import sync_playwright
 
 from .base import BaseScraper, ScrapedProduct, ScraperError
@@ -34,14 +35,10 @@ _LD_JSON_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/122.0.0.0 Safari/537.36"
-)
-
+# No User-Agent: curl_cffi's Chrome impersonation sends one matching its TLS
+# fingerprint, and overriding it with a different Chrome version is exactly
+# the kind of mismatch bot screening looks for.
 _JSON_HEADERS = {
-    "User-Agent": _USER_AGENT,
     "Accept": "application/json,text/plain,*/*",
     "Accept-Language": "en-IN,en;q=0.9",
     "Referer": "https://www.google.com/",
@@ -51,6 +48,9 @@ _JSON_HEADERS = {
 # The limit is short-lived, so a few backed-off retries recover far more often
 # than they fail — and failing here is expensive (browser fallback) or wrong
 # (a missed stock reading turns into a false back-in-stock alert).
+# Most 429s we saw were not rate limits at all: Shopify's Cloudflare edge
+# answers python-requests' TLS fingerprint with 429 (Retry-After: 60) while the
+# same IP gets 200 with a browser fingerprint, hence _http_get.
 _RETRY_STATUSES = {429, 430, 503}
 _MAX_ATTEMPTS = 4
 _BACKOFF_BASE_SECONDS = 1.5
@@ -84,6 +84,17 @@ class NotShopifyJson(ScraperError):
     """A host answered /products/{handle}.json with something that isn't it."""
 
 
+def _http_get(url: str, headers: dict, timeout: int):
+    """GET with a Chrome TLS fingerprint, following redirects."""
+    return curl_requests.get(
+        url,
+        headers=headers,
+        timeout=timeout,
+        allow_redirects=True,
+        impersonate="chrome",
+    )
+
+
 def _retry_delay(response, attempt: int) -> float:
     """Honour Retry-After when present, else exponential backoff."""
     retry_after = (response.headers or {}).get("Retry-After") if response else None
@@ -104,12 +115,7 @@ def get_with_retry(url: str, timeout: int = 10):
     """
     last_response = None
     for attempt in range(_MAX_ATTEMPTS):
-        response = requests.get(
-            url,
-            headers=_JSON_HEADERS,
-            timeout=timeout,
-            allow_redirects=True,
-        )
+        response = _http_get(url, _JSON_HEADERS, timeout)
         if response.status_code not in _RETRY_STATUSES:
             response.raise_for_status()
             return response
@@ -154,7 +160,7 @@ class ShopifyScraper(BaseScraper):
     def _scrape_requests(self, url: str) -> ScrapedProduct:
         try:
             return self._scrape_requests_at(url)
-        except requests.HTTPError as e:
+        except HTTPError as e:
             if e.response is None or e.response.status_code != 404:
                 raise
             moved = self._resolve_moved_url(url)
@@ -175,9 +181,7 @@ class ShopifyScraper(BaseScraper):
         the first variant's price.
         """
         try:
-            r = requests.get(
-                url, headers=_HTML_HEADERS, timeout=15, allow_redirects=True
-            )
+            r = _http_get(url, _HTML_HEADERS, 15)
             r.raise_for_status()
         except Exception as e:
             logger.info("Could not follow redirect for %s: %s", url, e)
@@ -292,9 +296,7 @@ class ShopifyScraper(BaseScraper):
         asset CDN (and uses /s/files/ paths), not a store domain.
         """
         try:
-            r = requests.get(
-                url, headers=_HTML_HEADERS, timeout=15, allow_redirects=True
-            )
+            r = _http_get(url, _HTML_HEADERS, 15)
             r.raise_for_status()
         except Exception as e:
             logger.info("Could not fetch storefront HTML for %s: %s", url, e)

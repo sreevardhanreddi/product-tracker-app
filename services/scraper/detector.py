@@ -2,16 +2,12 @@ import time
 from enum import Enum
 from urllib.parse import urlparse
 
-import httpx
+from curl_cffi import requests as curl_requests
 
-_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/122.0.0.0 Safari/537.36"
-)
-
+# No User-Agent: the Chrome impersonation below sends one matching its TLS
+# fingerprint. Shopify's Cloudflare edge answers a plain python client's
+# fingerprint with 429, which made Shopify stores look undetectable.
 _PROBE_HEADERS = {
-    "User-Agent": _USER_AGENT,
     "Accept": "application/json,text/plain,*/*",
     "Accept-Language": "en-IN,en;q=0.9",
 }
@@ -118,11 +114,12 @@ def _probe_shopify_json(probe_url: str) -> bool:
     """GET /products/{handle}.json, retrying through rate-limit responses."""
     for attempt in range(_PROBE_ATTEMPTS):
         try:
-            r = httpx.get(
+            r = curl_requests.get(
                 probe_url,
                 headers=_PROBE_HEADERS,
                 timeout=10,
-                follow_redirects=True,
+                allow_redirects=True,
+                impersonate="chrome",
             )
         except Exception:
             return False
@@ -149,11 +146,12 @@ def _probe_shopify_json(probe_url: str) -> bool:
 def _probe_shopify_html(url: str) -> bool:
     """Look for Shopify storefront markers in the product page HTML."""
     try:
-        r = httpx.get(
+        r = curl_requests.get(
             url,
             headers={**_PROBE_HEADERS, "Accept": "text/html,application/xhtml+xml"},
             timeout=15,
-            follow_redirects=True,
+            allow_redirects=True,
+            impersonate="chrome",
         )
     except Exception:
         return False
