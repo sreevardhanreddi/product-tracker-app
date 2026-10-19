@@ -44,6 +44,8 @@ async function fetchShopifyPriceInBrowser(link) {
     in_stock: Boolean(variant.available),
     image_url: image && image.startsWith("//") ? `https:${image}` : image,
     raw_price_text: String(variant.price),
+    // null for single-variant products ("Default Title")
+    variant_title: variant.public_title || null,
   };
 }
 

@@ -25,6 +25,9 @@ class ProductLink(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     last_checked_at: Optional[datetime] = Field(default=None)
     last_scrape_method: Optional[str] = Field(default=None, max_length=20)
+    # The store's name for the linked variant ("1 Kg"), so several sizes of one
+    # product can be told apart; None for single-variant products.
+    variant_title: Optional[str] = Field(default=None, max_length=255)
 
     product: Optional["Product"] = Relationship(back_populates="links")
 

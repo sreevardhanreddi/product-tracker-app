@@ -16,6 +16,7 @@ class ScrapedProduct:
     image_url: Optional[str] = None
     raw_price_text: Optional[str] = None
     scrape_method: Optional[str] = None  # "requests" or "browser"
+    variant_title: Optional[str] = None  # e.g. "1 Kg"; None if single-variant
 
 
 class ScraperError(Exception):

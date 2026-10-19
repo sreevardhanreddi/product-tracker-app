@@ -448,7 +448,7 @@
       const links = product.links || [];
       const rows = links.map((link) => `
         <div class="flex flex-col items-start gap-2 border-b border-stone-800 px-3 py-3 text-xs sm:flex-row sm:items-center last:border-b-0">
-          <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500 sm:min-w-14">${escapeHtml(link.source_label || link.platform)}</span>
+          <span class="shrink-0 text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500 sm:min-w-14">${escapeHtml(link.source_label || link.platform)}${link.variant_title ? ` · <span class="normal-case tracking-normal text-stone-300">${escapeHtml(link.variant_title)}</span>` : ""}</span>
           <a class="min-w-0 flex-1 break-all text-sky-300 transition hover:text-sky-200 sm:truncate sm:break-normal" href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(link.url)}">${escapeHtml(link.url)}</a>
           ${link.current_price != null
           ? `<span class="whitespace-nowrap font-semibold text-stone-100">${formatPrice(link.currency, link.current_price)}</span>`

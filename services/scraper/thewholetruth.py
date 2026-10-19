@@ -135,6 +135,7 @@ class TheWholeTruthScraper(BaseScraper):
             in_stock=in_stock,
             image_url=image_url,
             raw_price_text=raw_price_text,
+            variant_title=variant_title,
         )
 
     @staticmethod

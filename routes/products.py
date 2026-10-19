@@ -349,6 +349,7 @@ def sync_link_price_from_client(
         image_url=payload.image_url,
         raw_price_text=payload.raw_price_text,
         scrape_method="client",
+        variant_title=payload.variant_title,
     )
     history = record_scraped_price(link, product, data, session)
     if history is None:

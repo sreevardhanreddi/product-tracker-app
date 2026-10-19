@@ -221,6 +221,7 @@ class ShopifyScraper(BaseScraper):
             image_url=image_url,
             raw_price_text=variant["price"],
             scrape_method="requests",
+            variant_title=self._variant_title(variant),
         )
 
     @classmethod
@@ -403,6 +404,9 @@ class ShopifyScraper(BaseScraper):
                     image_url=image_url,
                     raw_price_text=price_raw,
                     scrape_method="browser",
+                    variant_title=self._page_variant_title(
+                        page, self._extract_variant_id(url)
+                    ),
                 )
             finally:
                 browser.close()
@@ -455,6 +459,34 @@ class ShopifyScraper(BaseScraper):
                 ):
                     return offer
         return offers[0]
+
+    @staticmethod
+    def _variant_title(variant: dict) -> str | None:
+        """The variant's own name ("1 Kg"), or None for a single-variant product."""
+        title = variant.get("public_title") or variant.get("title")
+        if not title or title == "Default Title":
+            return None
+        return str(title).strip() or None
+
+    @classmethod
+    def _page_variant_title(cls, page, variant_id: str | None) -> str | None:
+        """
+        Read the variant title from the ShopifyAnalytics.meta object every
+        Shopify storefront emits; its variants carry `public_title`.
+        """
+        try:
+            variants = page.evaluate(
+                "() => window.ShopifyAnalytics?.meta?.product?.variants || []"
+            )
+        except Exception:
+            return None
+        if not variants:
+            return None
+        chosen = next(
+            (v for v in variants if variant_id and str(v.get("id")) == variant_id),
+            variants[0],
+        )
+        return cls._variant_title(chosen)
 
     @staticmethod
     def _extract_variant_id(url: str) -> str | None:

@@ -167,6 +167,8 @@ def record_scraped_price(
         link.image_url = data.image_url
     if data.scrape_method:
         link.last_scrape_method = data.scrape_method
+    if data.variant_title:
+        link.variant_title = data.variant_title
     session.add(link)
 
     # Replace queue-time placeholder with first successful scraped title.

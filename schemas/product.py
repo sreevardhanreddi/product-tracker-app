@@ -23,6 +23,7 @@ class ClientPriceSync(BaseModel):
     in_stock: bool = True
     image_url: Optional[str] = None
     raw_price_text: Optional[str] = None
+    variant_title: Optional[str] = Field(default=None, max_length=255)
 
 
 class ProductLinkUpdate(BaseModel):
@@ -49,6 +50,7 @@ class ProductLinkRead(BaseModel):
     updated_at: datetime
     last_checked_at: Optional[datetime]
     last_scrape_method: Optional[str]
+    variant_title: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
