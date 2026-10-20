@@ -209,7 +209,7 @@ class ShopifyScraper(BaseScraper):
             image_url=image_url,
             raw_price_text=variant["price"],
             scrape_method="requests",
-            variant_title=self._variant_title(variant),
+            variant_title=self._variant_title(variant, data.get("title")),
         )
 
     @classmethod
@@ -391,7 +391,7 @@ class ShopifyScraper(BaseScraper):
                     raw_price_text=price_raw,
                     scrape_method="browser",
                     variant_title=self._page_variant_title(
-                        page, self._extract_variant_id(url)
+                        page, self._extract_variant_id(url), name
                     ),
                 )
             finally:
@@ -447,15 +447,24 @@ class ShopifyScraper(BaseScraper):
         return offers[0]
 
     @staticmethod
-    def _variant_title(variant: dict) -> str | None:
-        """The variant's own name ("1 Kg"), or None for a single-variant product."""
+    def _variant_title(variant: dict, product_title: str | None = None) -> str | None:
+        """
+        The variant's own name ("1 Kg"); for a single-variant product (Shopify's
+        "Default Title"), the product title instead. Flavours are often separate
+        products on one store, and without this two links from the same store
+        would carry the same label in the link list and chart tooltip.
+        """
         title = variant.get("public_title") or variant.get("title")
         if not title or title == "Default Title":
+            title = product_title
+        if not title:
             return None
         return str(title).strip() or None
 
     @classmethod
-    def _page_variant_title(cls, page, variant_id: str | None) -> str | None:
+    def _page_variant_title(
+        cls, page, variant_id: str | None, product_title: str | None
+    ) -> str | None:
         """
         Read the variant title from the ShopifyAnalytics.meta object every
         Shopify storefront emits; its variants carry `public_title`.
@@ -465,14 +474,14 @@ class ShopifyScraper(BaseScraper):
                 "() => window.ShopifyAnalytics?.meta?.product?.variants || []"
             )
         except Exception:
-            return None
+            variants = []
         if not variants:
-            return None
+            return cls._variant_title({}, product_title)
         chosen = next(
             (v for v in variants if variant_id and str(v.get("id")) == variant_id),
             variants[0],
         )
-        return cls._variant_title(chosen)
+        return cls._variant_title(chosen, product_title)
 
     @staticmethod
     def _extract_variant_id(url: str) -> str | None:
