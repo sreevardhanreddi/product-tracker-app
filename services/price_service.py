@@ -109,6 +109,7 @@ def check_product_link_price(
         )
         return None
 
+    logger.info(f"checking {link.url}")
     try:
         scraper, _ = get_scraper(link.url, headless=headless, platform=link.platform)
         data = scraper.scrape(link.url)
