@@ -665,6 +665,8 @@
           const seriesData = mapPointsForChart(points.filter((point) => point.product_link_id === link.id));
           return {
             label: link.source_label || link.platform,
+            // Shown in the tooltip so several sizes from one store are told apart.
+            variantTitle: link.variant_title || null,
             data: seriesData,
             borderColor: color.border,
             backgroundColor: color.bg,
@@ -727,9 +729,12 @@
                   : formatBrowserDate(new Date(items[0].parsed.x).toISOString()),
                 label: (ctx) => {
                   const value = Number(ctx.parsed?.y);
+                  const name = ctx.dataset.variantTitle
+                    ? `${ctx.dataset.label} · ${ctx.dataset.variantTitle}`
+                    : ctx.dataset.label;
                   const base = Number.isFinite(value)
-                    ? `${ctx.dataset.label}: ${curr} ${value.toFixed(2)}`
-                    : `${ctx.dataset.label}: —`;
+                    ? `${name}: ${curr} ${value.toFixed(2)}`
+                    : `${name}: —`;
                   if (ctx.raw?.backInStock) return `${base} · Back in stock`;
                   if (ctx.raw?.inStock === false) return `${base} · Out of stock`;
                   return base;
