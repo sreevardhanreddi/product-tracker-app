@@ -5,6 +5,13 @@ x-default-logging: &default-logging
       max-size: "10m"
       max-file: "3"
 
+# One image shared by migrate/app/celery_worker/celery_beat, built once
+x-prod-image: &prod-image
+  image: product-tracker:prod
+  build:
+    context: .
+    dockerfile: Dockerfile.prod
+
 services:
   postgres:
     <<: *default-logging
@@ -35,10 +42,7 @@ services:
       - .env
 
   migrate:
-    <<: *default-logging
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
+    <<: [*default-logging, *prod-image]
     env_file:
       - .env
     depends_on:
@@ -50,10 +54,7 @@ services:
     mem_limit: 512m
 
   app:
-    <<: *default-logging
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
+    <<: [*default-logging, *prod-image]
     ports:
       - "8015:8000"
     env_file:
@@ -68,10 +69,7 @@ services:
     mem_limit: 512m
 
   celery_worker:
-    <<: *default-logging
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
+    <<: [*default-logging, *prod-image]
     env_file:
       - .env
     depends_on:
@@ -85,10 +83,7 @@ services:
     mem_limit: 1g
 
   celery_beat:
-    <<: *default-logging
-    build:
-      context: .
-      dockerfile: Dockerfile.prod
+    <<: [*default-logging, *prod-image]
     env_file:
       - .env
     depends_on:

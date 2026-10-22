@@ -40,7 +40,7 @@ def check_due_product_links(self):
                 due_links.append((link.id, link.url))
                 continue
             next_due = link.last_checked_at + timedelta(
-                minutes=link.check_interval_minutes
+                minutes=_check_interval_minutes(link)
             )
             if now >= next_due:
                 logger.debug(
@@ -55,6 +55,16 @@ def check_due_product_links(self):
 
     logger.info("Dispatched price checks | due=%d", dispatched)
     return {"dispatched": dispatched}
+
+
+def _check_interval_minutes(link: ProductLink) -> int:
+    """Out-of-stock links are polled faster so restocks are caught quickly."""
+    if link.in_stock is False:
+        return min(
+            link.check_interval_minutes,
+            settings.OUT_OF_STOCK_CHECK_INTERVAL_MINUTES,
+        )
+    return link.check_interval_minutes
 
 
 def _hostname(url: str) -> str:

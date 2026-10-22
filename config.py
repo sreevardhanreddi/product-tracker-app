@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Price check schedule
     PRICE_CHECK_INTERVAL_MINUTES: int = 60
     PRICE_CHANGE_NOTIFY_MIN_PERCENT: float = 1.0
+    # Out-of-stock links are re-checked this often (if sooner than their own
+    # interval) so a restock is caught quickly.
+    OUT_OF_STOCK_CHECK_INTERVAL_MINUTES: int = 10
     # Seconds to space apart checks that hit the same store. Stores like
     # Shopify rate-limit per host, so links are staggered per hostname rather
     # than dispatched as one burst. Different hosts still start immediately.

@@ -80,10 +80,16 @@ def on_task_failure(task_id, exception, traceback, sender, **_):
     )
 
 
-# Periodic schedule: fan-out due link checks every N minutes
+# Periodic schedule: fan-out due link checks every N minutes. Ticks at the
+# shorter of the two intervals so out-of-stock links can be checked on time;
+# the fan-out itself only dispatches links that are actually due.
 celery_app.conf.beat_schedule = {
     "check-due-product-links": {
         "task": "tasks.price_check.check_due_product_links",
-        "schedule": settings.PRICE_CHECK_INTERVAL_MINUTES * 60,  # in seconds
+        "schedule": min(
+            settings.PRICE_CHECK_INTERVAL_MINUTES,
+            settings.OUT_OF_STOCK_CHECK_INTERVAL_MINUTES,
+        )
+        * 60,  # in seconds
     }
 }
